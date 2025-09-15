@@ -7,22 +7,21 @@ import unicodedata
 
 
 _ZERO_WIDTH = r"\u200B\u200C\u200D\u2060\ufeff" #비가시 제로폭/제어문자들
-_DASHES =  "\u2010\u2011\u2012\u2013\u2014\u2212\ufe63\u2043" #하이픈/대시를 아스키 '-'로 통일할 때 쓰는 패턴
+_DASHES =  "\u2010\u2011\u2012\u2013\u2014\u2212\ufe63\u2043" #하이픈/대시를 아스키 '-'로 통일
 _NBSP = "\u00A0\u2007\u202F"    #NBSP(공백처럼 보이지만 다른 문자) 계열
 
 def strip_invisible(s: str) -> str:
     '''제로폭, 필요하지 않은 제어문자 제거(개행은 유지)'''
     #제어문자 중 탭/개행 제외 제거
     s = re.sub(rf"[{_ZERO_WIDTH}]", "", s)
-    s = re.sub(r"[^\S\r\n\t]", " ", s)  #이상한 공백류는 보통 공백으로
+    s = re.sub(r"[^\S\r\n\t]", " ", s)  #개행/탭 제외 모든 공백은 ASCII 공백으로
     return s
 
 def normalize_text(s: str) -> str:
     """
-    정규화 파이프라인:
     1. 유니코드 정규화
     2. 줄바꿈 통일 \r\n, \r -> \n
-    3. 제로폭/ 숨은 공백 제거, NESP류 -> 일반 공백
+    3. 제로폭/ 숨은 공백 제거, NESP류 -> ASCII 공백처리
     4. 하이픈/ 대시류 -> '-'
     5. 공백 정리(연속 공백 축약, 라인 끝 공백 제거)
     """
