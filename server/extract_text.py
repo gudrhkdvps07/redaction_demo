@@ -41,7 +41,7 @@ def extract_pdf_text(pdf_path: str) -> PDFTextResult:
 
     return PDFTextResult(full_text=full_text, pages=pages)
 
-# 간단 CLI
+
 if __name__ == "__main__":
     import argparse
     ap = argparse.ArgumentParser(description="Plain PDF text extractor (no OCR).")
