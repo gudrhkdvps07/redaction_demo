@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>De-ID Text Inspector</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+
+  <!-- pdf.js는 "미리보기(1페이지)"만 사용 -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+  <script>
+    pdfjsLib.GlobalWorkerOptions.workerSrc =
+      "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
+    // 서버 주소
+    window.API_BASE = localStorage.getItem('API_BASE') || 'http://127.0.0.1:8000';
+  </script>
+
+  <style>
+    .mono{ font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono","Courier New", monospace }
+    mark{ padding:0 .15rem; border-radius:.2rem }
+  </style>
+</head>
+<body class="bg-gray-50 text-gray-900">
+  <div class="max-w-7xl mx-auto p-6">
+    <h1 class="text-2xl font-bold mb-4">🛡️ De-ID Text Inspector</h1>
+
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      <!-- LEFT: Controls -->
+      <div class="bg-white rounded-2xl shadow p-5 space-y-4">
+        <div>
+          <label class="block text-sm font-semibold mb-1">파일 업로드 (PDF 권장)</label>
+          <input id="file" type="file" accept=".pdf,.txt,text/plain" class="block w-full border rounded p-2 bg-white" />
+          <p class="text-xs text-gray-500 mt-1">* PDF는 서버에서 추출(PyMuPDF), TXT는 그대로 읽음</p>
+        </div>
+
+        <fieldset class="border rounded p-3">
+          <legend class="text-sm font-semibold">규칙 선택</legend>
+          <label class="block"><input type="checkbox" name="rule" value="rrn" checked> 주민등록번호 (형식+날짜, <span class="text-xs">옵션: 체크섬</span>)</label>
+          <label class="block"><input type="checkbox" name="rule" value="phone_mobile" checked> 휴대전화(010)</label>
+          <label class="block"><input type="checkbox" name="rule" value="phone_city" checked> 지역전화(02/031~064)</label>
+          <label class="block"><input type="checkbox" name="rule" value="email" checked> 이메일</label>
+          <label class="block"><input type="checkbox" name="rule" value="card" checked> 카드번호 (Luhn)</label>
+          <label class="block"><input type="checkbox" name="rule" value="bizno" checked> 사업자등록번호 (체크섬)</label>
+        </fieldset>
+
+        <div class="flex items-center gap-3">
+          <label class="inline-flex items-center gap-2"><input id="opt-rrn-checksum" type="checkbox"> 주민번호 체크섬도 검사</label>
+          <label class="inline-flex items-center gap-2"><input id="opt-normalize" type="checkbox" checked> 텍스트 정규화 사용</label>
+        </div>
+
+        <div class="flex items-center gap-3">
+          <button id="btn-scan" class="px-4 py-2 rounded bg-blue-600 text-white">스캔 실행</button>
+          <button id="btn-export" class="px-3 py-2 rounded border">리포트 JSON 저장</button>
+          <span id="status" class="text-sm text-gray-600"></span>
+        </div>
+
+        <div class="border-t pt-3 space-y-2">
+          <div class="text-xs text-gray-500">API: <code id="api-url" class="mono"></code></div>
+          <div class="flex gap-2">
+            <input id="api-input" class="border rounded px-2 py-1 text-sm flex-1" placeholder="http://127.0.0.1:8000" />
+            <button id="api-save" class="px-2 py-1 border rounded text-sm">저장</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- RIGHT: Preview / Results -->
+      <div class="lg:col-span-2 space-y-6">
+        <div class="bg-white rounded-2xl shadow p-5">
+          <h2 class="font-semibold mb-2">PDF 미리보기(1페이지)</h2>
+          <canvas id="pdf-preview" class="w-full border rounded"></canvas>
+        </div>
+
+        <div class="bg-white rounded-2xl shadow p-5">
+          <h2 class="font-semibold mb-2">추출 텍스트 (정규화 적용본 미리보기)</h2>
+          <textarea id="txt-out" class="w-full h-48 border rounded p-2 mono" readonly></textarea>
+        </div>
+
+        <div class="bg-white rounded-2xl shadow p-5">
+          <h2 class="font-semibold mb-2">매칭 결과</h2>
+          <div id="summary" class="text-sm text-gray-700 mb-2"></div>
+          <div class="overflow-auto">
+            <table class="min-w-full text-sm">
+              <thead>
+                <tr class="border-b">
+                  <th class="text-left py-2 px-2">Rule</th>
+                  <th class="text-left py-2 px-2">Match</th>
+                  <th class="text-left py-2 px-2">Valid</th>
+                  <th class="text-left py-2 px-2">Context</th>
+                </tr>
+              </thead>
+              <tbody id="result-rows"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script type="module" src="./app.js"></script>
+</body>
+</html>

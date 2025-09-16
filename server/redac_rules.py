@@ -1,30 +1,38 @@
 import re
+from .validators import (
+    is_valid_rrn, is_valid_phone_mobile, is_valid_phone_city,
+    is_valid_email, is_valid_card, is_valid_bizno
+)
 
-RULES = [
-    {  # 1) 주민등록번호(형식만: YYMMDD-XXXXXXX)
-        "id": "rrn", 
-        "pattern" : r"\b\d{6}-[1-8]\d{6}\b"
+RULES: dict[str, dict] = {
+    "rrn": {
+        "id": "rrn",
+        "pattern": re.compile(r"\b\d{6}-[1-8]\d{6}\b"),
+        "validate": lambda s, opts=None: is_valid_rrn(s, bool(opts and opts.get("rrn_checksum"))),
     },
-    {   # 2) 휴대전화(010, 구분자 -, 공백, . 허용)
-        "id": "phone_mobile", 
-        "pattern": r"\b010[-.\s]?\d{3,4}[-.\s]?\d{4}\b"
+    "phone_mobile": {
+        "id": "phone_mobile",
+        "pattern": re.compile(r"\b010[-.\s]?\d{3,4}[-.\s]?\d{4}\b"),
+        "validate": is_valid_phone_mobile,
     },
-    {   # 3) 지역전화(02, 031~064)
-        "id": "phone_city", 
-        "pattern": r"\b(?:02|0(?:3[1-3]|4[1-4]|5[1-5]|6[1-4]))[-.\s]?\d{3,4}[-.\s]?\d{4}\b"
+    "phone_city": {
+        "id": "phone_city",
+        "pattern": re.compile(r"\b(?:02|0(?:3[1-3]|4[1-4]|5[1-5]|6[1-4]))[-.\s]?\d{3,4}[-.\s]?\d{4}\b"),
+        "validate": is_valid_phone_city,
     },
-    {   # 4) 이메일
-        "id": "email", 
-        "pattern": r"\b[a-zA-Z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b"
+    "email": {
+        "id": "email",
+        "pattern": re.compile(r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b"),
+        "validate": is_valid_email,
     },
-    {   # 5) 카드번호
-        "id": "card", 
-        "pattern": r"(?<!\d)(?:\d[ -]?){13,19}(?!\d)"
+    "card": {
+        "id": "card",
+        "pattern": re.compile(r"(?:\d[ -]?){13,19}"),
+        "validate": is_valid_card,
     },
-    {   # 6) 사업자등록번호(3-2-5 자리, 구분자 - 선택)
-        "id": "bizno", 
-        "pattern": r"\b\d{3}-?\d{2}-?\d{5}\b"
+    "bizno": {
+        "id": "bizno",
+        "pattern": re.compile(r"\b\d{3}-?\d{2}-?\d{5}\b"),
+        "validate": is_valid_bizno,
     },
-]
-
-COMPILED_RULES = [{"id": r["id"], "pattern": re.compile(r["pattern"])} for r in RULES]
+}
