@@ -49,7 +49,6 @@ def normalize_text(s: str) -> str:
 
     return s
 
+''' 검증기(유효한 숫자인지 검증하는)에서 쓸 숫자만 추출'''
 def digits_only(s: str) -> str:
-    ''' 검증기(유효한 숫자인지 검증하는)에서 쓸 숫자만 추출'''
-
     return re.sub(r"\D", "", s)
