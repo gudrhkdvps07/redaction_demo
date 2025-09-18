@@ -1,12 +1,13 @@
 # server/routes_redaction.py
-from fastapi import APIRouter, UploadFile, File, HTTPException, Response
+from fastapi import APIRouter, UploadFile, File, HTTPException, Response, Form
 from typing import List
+import json
+
 from ..schemas import DetectRequest, DetectResponse, RedactRequest, PatternItem
 from ..pdf_redaction import detect_boxes_from_patterns, apply_redaction
 from ..redac_rules import PRESET_PATTERNS
 
 router = APIRouter(tags=["redaction"])
-
 
 @router.get("/patterns")
 def list_patterns():
@@ -27,14 +28,21 @@ async def detect(file: UploadFile = File(...), req: DetectRequest = DetectReques
     return DetectResponse(total_matches=len(boxes), boxes=boxes)
 
 @router.post("/redactions/apply", response_class=Response)
-async def apply(file: UploadFile = File(...), req: RedactRequest = RedactRequest(boxes=[])):
+async def apply(
+    file: UploadFile = File(...),
+    req: str = Form('{"boxes": [], "fill": "black"}')):
     if file.content_type not in ("application/pdf", "application/octet-stream"):
         raise HTTPException(status_code=400, detail="PDF 파일을 업로드하세요.")
-    if not req.boxes:
+    try:
+        data = json.loads(req)
+        model = RedactRequest(**data)
+    except Exception as e:
+        raise HTTPException(status_code=422, detail=f"invalid req json: {e}")
+    if not model.boxes:
         raise HTTPException(status_code=400, detail="boxes가 비어있습니다.")
     pdf = await file.read()
 
-    out = apply_redaction(pdf, req.boxes, fill=req.fill)
+    out = apply_redaction(pdf, model.boxes, fill=model.fill)
     return Response(
         content=out,
         media_type="application/pdf",
