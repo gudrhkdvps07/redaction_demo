@@ -1,4 +1,4 @@
-from fastapi import FastAPI, UploadFile, File
+from fastapi import FastAPI, UploadFile, File, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import List, Dict, Any, Optional
@@ -95,7 +95,10 @@ async def list_rules():
 @app.post("/extract")
 async def extract(file: UploadFile = File(...)):
     """PDF/TXT에서 텍스트 추출"""
-    return await extract_text_from_file(file)
+    try:
+        return await extract_text_from_file(file)
+    except Exception as e:
+        raise HTTPException(status_code=415, detail=str(e))
 
 
 @app.post("/match", response_model=MatchResponse)
@@ -104,6 +107,7 @@ async def match(req: MatchRequest):
     정규식 기반 PII 탐지
     - 우선순위: RRN 먼저 → 자리 마스킹 → 그 다음 규칙들 → 카드 마지막
     - 카드 탐지 시 추가 필터: 좌우 이웃 숫자 차단, RRN 모양/겹침 차단
+    - 모바일/도시번호 겹침 제거
     """
     original_text = normalize_text(req.text) if req.normalize else req.text
     working_text = original_text  # 마스킹은 여기에 적용해서 인덱스 보존
@@ -164,7 +168,6 @@ async def match(req: MatchRequest):
                     if line_end == -1:
                         line_end = len(working_text)
                     line = working_text[line_start:line_end]
-                    # RRN 패턴이 라인에 존재하면 카드 탐지 스킵
                     if RULES["rrn"]["regex"].search(line):
                         continue
 
@@ -189,17 +192,23 @@ async def match(req: MatchRequest):
                 "context": _ctx(original_text, start, end),
             })
 
-    # --- 3) 후처리: RRN과 겹치는 카드 매치 제거 (우선순위: RRN > CARD) ---
+    # --- 3) 후처리 #1: RRN과 겹치는 카드 매치 제거 (우선순위: RRN > CARD) ---
     rrn_spans_final = [(r["index"], r["end"]) for r in results if r["rule"] == "rrn"]
     if rrn_spans_final:
-        filtered = []
-        for r in results:
-            if r["rule"] == "card" and any(_overlaps((r["index"], r["end"]), s) for s in rrn_spans_final):
-                continue
-            filtered.append(r)
-        results = filtered
+        results = [
+            r for r in results
+            if not (r["rule"] == "card" and any(_overlaps((r["index"], r["end"]), s) for s in rrn_spans_final))
+        ]
 
-    # --- 4) 카운트 집계 ---
+    # --- 4) 후처리 #2: 모바일과 겹치는 도시번호 제거 (우선순위: phone_mobile > phone_city) ---
+    mobile_spans = [(r["index"], r["end"]) for r in results if r["rule"] == "phone_mobile"]
+    if mobile_spans:
+        results = [
+            r for r in results
+            if not (r["rule"] == "phone_city" and any(_overlaps((r["index"], r["end"]), s) for s in mobile_spans))
+        ]
+
+    # --- 5) 카운트 집계 ---
     counts = {rid: 0 for rid in RULES}
     for r in results:
         counts[r["rule"]] += 1
