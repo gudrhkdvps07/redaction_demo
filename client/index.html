@@ -11,8 +11,9 @@
   <script>
     pdfjsLib.GlobalWorkerOptions.workerSrc =
       "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
-    // 서버 주소
-    window.API_BASE = localStorage.getItem('API_BASE') || 'http://127.0.0.1:8000';
+
+    // ✅ API 주소는 고정 기본값만 사용 (UI 제거)
+    window.API_BASE = 'http://127.0.0.1:8000';
   </script>
 
   <style>
@@ -22,7 +23,7 @@
 </head>
 <body class="bg-gray-50 text-gray-900">
   <div class="max-w-7xl mx-auto p-6">
-    <h1 class="text-2xl font-bold mb-4">🛡️ De-ID Text Inspector</h1>
+    <h1 class="text-2xl font-bold mb-4">🛡 De-ID Text Inspector</h1>
 
     <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
       <!-- LEFT: Controls -->
@@ -35,7 +36,7 @@
 
         <fieldset class="border rounded p-3">
           <legend class="text-sm font-semibold">규칙 선택</legend>
-          <label class="block"><input type="checkbox" name="rule" value="rrn" checked> 주민등록번호 (형식+날짜, <span class="text-xs">옵션: 체크섬</span>)</label>
+          <label class="block"><input type="checkbox" name="rule" value="rrn" checked> 주민등록번호 (형식+날짜)</label>
           <label class="block"><input type="checkbox" name="rule" value="phone_mobile" checked> 휴대전화(010)</label>
           <label class="block"><input type="checkbox" name="rule" value="phone_city" checked> 지역전화(02/031~064)</label>
           <label class="block"><input type="checkbox" name="rule" value="email" checked> 이메일</label>
@@ -43,9 +44,10 @@
           <label class="block"><input type="checkbox" name="rule" value="bizno" checked> 사업자등록번호 (체크섬)</label>
         </fieldset>
 
-        <div class="flex items-center gap-3">
-          <label class="inline-flex items-center gap-2"><input id="opt-rrn-checksum" type="checkbox"> 주민번호 체크섬도 검사</label>
-          <label class="inline-flex items-center gap-2"><input id="opt-normalize" type="checkbox" checked> 텍스트 정규화 사용</label>
+        <!-- ✅ 토글 섹션 제거: UI는 없애되, app.js 호환을 위해 숨김 input으로 기본값 강제 -->
+        <div class="hidden">
+          <input id="opt-rrn-checksum" type="checkbox" checked>
+          <input id="opt-normalize" type="checkbox" checked>
         </div>
 
         <div class="flex items-center gap-3">
@@ -54,10 +56,11 @@
           <span id="status" class="text-sm text-gray-600"></span>
         </div>
 
-        <div class="border-t pt-3 space-y-2">
-          <div class="text-xs text-gray-500">API: <code id="api-url" class="mono"></code></div>
+        <!-- ✅ API URL 표시/입력/저장 제거: app.js가 참조할 수 있어 숨김 dummy 유지 -->
+        <div class="hidden">
+          <div class="text-xs text-gray-500">API: <code id="api-url" class="mono">http://127.0.0.1:8000</code></div>
           <div class="flex gap-2">
-            <input id="api-input" class="border rounded px-2 py-1 text-sm flex-1" placeholder="http://127.0.0.1:8000" />
+            <input id="api-input" class="border rounded px-2 py-1 text-sm flex-1" value="http://127.0.0.1:8000" />
             <button id="api-save" class="px-2 py-1 border rounded text-sm">저장</button>
           </div>
         </div>
@@ -96,6 +99,7 @@
     </div>
   </div>
 
+  <!-- 기존 앱 로직 유지 -->
   <script type="module" src="./app.js"></script>
 </body>
 </html>
