@@ -39,7 +39,7 @@ CARD_RE = re.compile(
 EMAIL_RE  = re.compile(r"\b[A-Za-z0-9._%+-]+@(?:[A-Za-z0-9-]+\.)+[A-Za-z]{2,}\b")
 MOBILE_RE = re.compile(r"\b01[016789]-?\d{3,4}-?\d{4}\b")
 
-# (중요) 도시번호: 02, 03x, 04x, 05x, 06x만 허용 → 01x(=휴대폰)는 매치 안 됨
+# 도시번호: 02, 03x, 04x, 05x, 06x만 허용 → 01x(=휴대폰)는 매치 안 됨
 CITY_RE   = re.compile(r"\b(?:02|0(?:3[1-3]|4[1-4]|5[1-5]|6[1-4]))-?\d{3,4}-?\d{4}\b")
 
 BIZNO_RE  = re.compile(r"\b\d{3}-?\d{2}-?\d{5}\b")
@@ -78,3 +78,12 @@ RULES = {
         "validator": is_valid_card,
     },
 }
+
+PRESET_PATTERNS = [
+    {"name": "rrn",           "regex": RRN_RE.pattern,    "case_sensitive": False, "whole_word": False},
+    {"name": "email",         "regex": EMAIL_RE.pattern,  "case_sensitive": False, "whole_word": False},
+    {"name": "phone_mobile",  "regex": MOBILE_RE.pattern, "case_sensitive": False, "whole_word": False},
+    {"name": "phone_city",    "regex": CITY_RE.pattern,   "case_sensitive": False, "whole_word": False},
+    {"name": "bizno",         "regex": BIZNO_RE.pattern,  "case_sensitive": False, "whole_word": False},
+    {"name": "card",          "regex": CARD_RE.pattern,   "case_sensitive": False, "whole_word": False},
+]
