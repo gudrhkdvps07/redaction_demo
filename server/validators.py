@@ -13,8 +13,10 @@ def _valid_date_yyyymmdd(yyMMdd: str, s7: int) -> bool:
     yy, mm, dd = int(yyMMdd[:2]), int(yyMMdd[2:4]), int(yyMMdd[4:6])
     yyyy = _infer_century(yy, s7)
     if yyyy is None: return False
-    try: d = date(yyyy, mm, dd)
-    except ValueError: return False
+    try:
+        d = date(yyyy, mm, dd)
+    except ValueError:
+        return False
     return d <= date.today()
 
 def is_valid_rrn_date_only(rrn: str) -> bool:
@@ -34,40 +36,53 @@ def is_valid_rrn_checksum(rrn: str) -> bool:
     return check == digits[12]
 
 def is_valid_rrn(rrn: str, use_checksum: bool = False) -> bool:
-    if not is_valid_rrn_date_only(rrn): return False
+    if not is_valid_rrn_date_only(rrn): 
+        return False
     return is_valid_rrn_checksum(rrn) if use_checksum else True
 
-_AREACODE_RE = re.compile(r"^(?:02|0(?:3[1-3]|4[1-4]|5[1-5]|6[1-4]))")
-def is_valid_phone_mobile(number: str) -> bool:
-    d = digits_only(number); return d.startswith("010") and len(d) == 11
+# -------------------------------
+# 통일된 validate 함수 시그니처
+# -------------------------------
 
-def is_valid_phone_city(number: str) -> bool:
+_AREACODE_RE = re.compile(r"^(?:02|0(?:3[1-3]|4[1-4]|5[1-5]|6[1-4]))")
+
+def is_valid_phone_mobile(number: str, options: dict | None = None) -> bool:
     d = digits_only(number)
-    if not _AREACODE_RE.match(d): return False
+    return d.startswith("010") and len(d) == 11
+
+def is_valid_phone_city(number: str, options: dict | None = None) -> bool:
+    d = digits_only(number)
+    if not _AREACODE_RE.match(d): 
+        return False
     return (len(d) in (9,10)) if d.startswith("02") else (len(d) in (10,11))
 
 _EMAIL_STRICT = re.compile(r"^[A-Za-z0-9._%+-]+@(?:[A-Za-z0-9-]+\.)+[A-Za-z]{2,}$")
-def is_valid_email(addr: str) -> bool:
+
+def is_valid_email(addr: str, options: dict | None = None) -> bool:
     return bool(_EMAIL_STRICT.match((addr or "").strip()))
 
 def _luhn_ok(number: str) -> bool:
     d = digits_only(number)
-    if not (13 <= len(d) <= 19): return False
+    if not (13 <= len(d) <= 19): 
+        return False
     total, dbl = 0, False
     for ch in reversed(d):
         n = ord(ch) - 48
         if dbl:
             n *= 2
-            if n > 9: n -= 9
-        total += n; dbl = not dbl
+            if n > 9: 
+                n -= 9
+        total += n
+        dbl = not dbl
     return total % 10 == 0
 
-def is_valid_card(number: str) -> bool:
+def is_valid_card(number: str, options: dict | None = None) -> bool:
     return _luhn_ok(number)
 
-def is_valid_bizno(bno: str) -> bool:
+def is_valid_bizno(bno: str, options: dict | None = None) -> bool:
     d = digits_only(bno)
-    if len(d) != 10: return False
+    if len(d) != 10: 
+        return False
     nums = [ord(c) - 48 for c in d]
     ws = [1,3,7,1,3,7,1,3,5]
     s = sum(nums[i]*ws[i] for i in range(9))
