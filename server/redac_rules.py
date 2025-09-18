@@ -60,3 +60,12 @@ RULES = {
         "validator": is_valid_card,
     },
 }
+
+PRESET_PATTERNS = [
+    {"name": "rrn",           "regex": RRN_RE.pattern,    "case_sensitive": False, "whole_word": False},
+    {"name": "email",         "regex": EMAIL_RE.pattern,  "case_sensitive": False, "whole_word": False},
+    {"name": "phone_mobile",  "regex": MOBILE_RE.pattern, "case_sensitive": False, "whole_word": False},
+    {"name": "phone_city",    "regex": CITY_RE.pattern,   "case_sensitive": False, "whole_word": False},
+    {"name": "bizno",         "regex": BIZNO_RE.pattern,  "case_sensitive": False, "whole_word": False},
+    {"name": "card",          "regex": CARD_RE.pattern,   "case_sensitive": False, "whole_word": False},
+]

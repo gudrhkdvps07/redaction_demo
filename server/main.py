@@ -3,8 +3,8 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 # 라우터 임포트 
-from .routes.text import router as text_router          
-from .routes.redaction import router as redact_router   
+from .routes.text import router as text_router
+from .routes.redaction import router as redact_router
 
 app = FastAPI(title="Anonymizer API (Demo)", version="1.0.0")
 
@@ -12,7 +12,7 @@ app = FastAPI(title="Anonymizer API (Demo)", version="1.0.0")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
-    allow_credentials=True,
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )

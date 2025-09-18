@@ -2,10 +2,10 @@
 from fastapi import APIRouter, UploadFile, File, HTTPException, Response
 from typing import List
 from ..schemas import DetectRequest, DetectResponse, RedactRequest, PatternItem
-from ..redaction import detect_boxes_from_patterns, apply_redaction
+from ..pdf_redaction import detect_boxes_from_patterns, apply_redaction
 from ..redac_rules import PRESET_PATTERNS
 
-router = APIRouter(prefix="/v1", tags=["redaction"])
+router = APIRouter(tags=["redaction"])
 
 
 @router.get("/patterns")
