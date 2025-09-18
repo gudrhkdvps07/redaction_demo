@@ -8,28 +8,20 @@ from .validators import (
     is_valid_bizno,
 )
 
-# ---------------------------
-# 정규식 정의
-# ---------------------------
+# --- RRN ---
+RRN_RE = re.compile(r"\b\d{6}-\d{7}\b")
 
-# RRN: 6자리-7자리 (양끝 단어 경계)
-RRN_RE = re.compile(r"\b\d{6}-[0-9]{7}\b")
-
-# 카드번호:
-#  - RRN 모양(6-7) 및 13자리(하이픈 없음) 숫자열(사실상 RRN) 명시적 제외
-#  - 4-4-4-4 (Visa/Master 등 시작 4~6), 구분자는 하이픈/스페이스만, 그리고 동일한 구분자 반복(백레퍼런스)
-#  - 16자리 연속(시작 4~6)
-#  - AMEX 15자리 연속(34/37), 혹은 4-6-5 형태(동일 구분자)
+# --- 카드: 현실 포맷 + RRN 네거티브 가드 ---
 CARD_RE = re.compile(
     r"""
     \b
-    (?!\d{6}-\d{7}\b)                  # 정확한 RRN(6-7) 제외
-    (?!\d{13}\b)                       # 하이픈 없는 13자리 제외(주로 RRN)
+    (?!\d{6}-\d{7}\b)             # RRN 모양 제외
+    (?!\d{13}\b)                  # 하이픈 없는 13자리(사실상 RRN) 제외
     (?:
-        (?:[4-6]\d{3})(?:([- ])\d{4}){3}    # 4-4-4-4 (동일 구분자)
-        | [4-6]\d{15}                         # 16자리 연속(시작 4..6)
-        | 3[47]\d{13}                         # AMEX 15자리 연속
-        | 3[47]\d{2}(?:([- ])\d{6})\2\d{5}    # AMEX 4-6-5 (동일 구분자)
+        (?:[4-6]\d{3})(?:([- ])\d{4}){3}   # 4-4-4-4 (동일 구분자)
+        | [4-6]\d{15}                        # 16 연속(시작 4..6)
+        | 3[47]\d{13}                        # AMEX 15 연속
+        | 3[47]\d{2}(?:([- ])\d{6})\2\d{5}   # AMEX 4-6-5 (동일 구분자)
     )
     \b
     """,
@@ -38,24 +30,14 @@ CARD_RE = re.compile(
 
 EMAIL_RE  = re.compile(r"\b[A-Za-z0-9._%+-]+@(?:[A-Za-z0-9-]+\.)+[A-Za-z]{2,}\b")
 MOBILE_RE = re.compile(r"\b01[016789]-?\d{3,4}-?\d{4}\b")
-
-# 도시번호: 02, 03x, 04x, 05x, 06x만 허용 → 01x(=휴대폰)는 매치 안 됨
+# 도시번호: 02, 031~064만 허용 (01x 배제)
 CITY_RE   = re.compile(r"\b(?:02|0(?:3[1-3]|4[1-4]|5[1-5]|6[1-4]))-?\d{3,4}-?\d{4}\b")
-
 BIZNO_RE  = re.compile(r"\b\d{3}-?\d{2}-?\d{5}\b")
-
-
-# ---------------------------
-# RULES 매핑
-# ---------------------------
 
 RULES = {
     "rrn": {
         "regex": RRN_RE,
-        "validator": lambda v, opts=None: is_valid_rrn(
-            v,
-            bool((opts or {}).get("rrn_checksum", False))  # 옵션 키 맞춰 전달
-        ),
+        "validator": lambda v, _opts=None: is_valid_rrn(v, use_checksum=True),
     },
     "email": {
         "regex": EMAIL_RE,
@@ -78,12 +60,3 @@ RULES = {
         "validator": is_valid_card,
     },
 }
-
-PRESET_PATTERNS = [
-    {"name": "rrn",           "regex": RRN_RE.pattern,    "case_sensitive": False, "whole_word": False},
-    {"name": "email",         "regex": EMAIL_RE.pattern,  "case_sensitive": False, "whole_word": False},
-    {"name": "phone_mobile",  "regex": MOBILE_RE.pattern, "case_sensitive": False, "whole_word": False},
-    {"name": "phone_city",    "regex": CITY_RE.pattern,   "case_sensitive": False, "whole_word": False},
-    {"name": "bizno",         "regex": BIZNO_RE.pattern,  "case_sensitive": False, "whole_word": False},
-    {"name": "card",          "regex": CARD_RE.pattern,   "case_sensitive": False, "whole_word": False},
-]

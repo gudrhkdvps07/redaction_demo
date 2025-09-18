@@ -1,27 +1,33 @@
-from __future__ import annotations
-from typing import Dict, Any
 import fitz  # PyMuPDF
-
-def extract_pdf_text(file_bytes: bytes) -> Dict[str, Any]:
-    pages = []; full_parts = []
-    with fitz.open(stream=file_bytes, filetype="pdf") as doc:
-        for i, page in enumerate(doc, start=1):
-            text = page.get_text("text")
-            pages.append({"page": i, "text": text})
-            full_parts.append(f"\n\n===== [Page {i}] =====\n{text}")
-    return {"full_text": "".join(full_parts).lstrip(), "pages": pages}
-
-def extract_txt_text(file_bytes: bytes, encoding: str = "utf-8") -> Dict[str, Any]:
-    text = file_bytes.decode(encoding, errors="ignore")
-    return {"full_text": text, "pages": [{"page": 1, "text": text}]}
-
-# === add this wrapper ===
 import mimetypes
 
+def extract_pdf_text(data: bytes) -> dict:
+    """PDF 바이트에서 페이지별 텍스트 추출"""
+    pages = []
+    full = []
+    with fitz.open(stream=data, filetype="pdf") as doc:
+        for i, page in enumerate(doc, start=1):
+            txt = page.get_text("text") or ""
+            pages.append({"page": i, "text": txt})
+            full.append(f"===== [Page {i}] =====\n{txt}")
+    return {"full_text": "\n".join(full), "pages": pages}
+
+def extract_txt_text(data: bytes, encoding: str | None = None) -> dict:
+    """TXT 바이트에서 텍스트 디코드"""
+    if encoding:
+        text = data.decode(encoding, errors="ignore")
+    else:
+        # 간단 전략: UTF-8 우선
+        try:
+            text = data.decode("utf-8")
+        except UnicodeDecodeError:
+            text = data.decode("utf-8", errors="ignore")
+    return {"full_text": text, "pages": [{"page": 1, "text": text}]}
+
+# === FastAPI 업로드 파일 래퍼 ===
 async def extract_text_from_file(file) -> dict:
     """
-    UploadFile를 받아서 확장자/컨텐트타입 보고 PDF/TXT 분기.
-    FastAPI 의존 줄이려고 타입힌트는 느슨하게 둠.
+    UploadFile 받아서 PDF/TXT 자동 분기
     """
     data = await file.read()
     name = (getattr(file, "filename", "") or "").lower()
@@ -30,16 +36,13 @@ async def extract_text_from_file(file) -> dict:
         guessed, _ = mimetypes.guess_type(name)
         ctype = (guessed or "").lower()
 
-    # PDF 판별
     if name.endswith(".pdf") or "pdf" in ctype:
         return extract_pdf_text(data)
-
-    # TXT 판별(그 외에는 기본 TXT로 시도)
     if name.endswith(".txt") or ctype.startswith("text/"):
         return extract_txt_text(data)
 
-    # 미지정이면 안전하게 TXT 시도
+    # 확실치 않으면 TXT 시도
     try:
         return extract_txt_text(data)
-    except Exception:
-        raise ValueError(f"Unsupported file type: name={name}, content_type={ctype}")
+    except Exception as e:
+        raise ValueError(f"Unsupported file type: name={name}, content_type={ctype}") from e
