@@ -34,20 +34,31 @@ def _find_pattern_rects_on_page(page: fitz.Page, comp: re.Pattern, pattern_name:
     페이지에서 단어 토큰을 공백으로 join하여 정규식 검색 후,
     문자 오프셋을 단어 인덱스 범위로 근사 매핑 → Rect 산출.
     """
-    words = page.get_text("words")  # (x0,y0,x1,y1, text, block, line, word)
+    results = []
+    # 카드번호 처리
+    if pattern_name == "card":
+        text = page.get_text("text")
+        for m in comp.finditer(text):
+            matched = m.group(0)
+            rects = page.search_for(matched)  # 문자열 그대로 좌표 검색
+            for r in rects:
+                results.append((r, matched, pattern_name))
+        return results
+
+    #  기본 처리
+    words = page.get_text("words")
     if not words:
         return []
 
     tokens = [w[4] for w in words]
     joined = " ".join(tokens)
 
-    results = []
     for m in comp.finditer(joined):
         matched = m.group(0)
         start_char, end_char = m.start(), m.end()
 
-        # char 오프셋 -> 토큰 범위 근사 매핑
-        spans: List[Tuple[int, int]] = []
+        # char 오프셋 -> 토큰 인덱스 매핑
+        spans = []
         acc = 0
         start_idx = None
         end_idx = None
@@ -66,6 +77,7 @@ def _find_pattern_rects_on_page(page: fitz.Page, comp: re.Pattern, pattern_name:
             rects = _word_spans_to_rect(words, [(start_idx, end_idx)])
             for r in rects:
                 results.append((r, matched, pattern_name))
+
     return results
 
 # -----------------------------
@@ -81,6 +93,7 @@ def detect_boxes_from_patterns(pdf_bytes: bytes, patterns: List[PatternItem]) ->
 
     for pno in range(len(doc)):
         page = doc.load_page(pno)
+        print("DEBUG words:", page.get_text("words"))  #디버깅용
         for comp, pname in compiled:
             rects = _find_pattern_rects_on_page(page, comp, pname)
             for r, matched, pattern_name in rects:
@@ -90,6 +103,7 @@ def detect_boxes_from_patterns(pdf_bytes: bytes, patterns: List[PatternItem]) ->
                     x1=float(r.x1), y1=float(r.y1),
                     matched_text=matched, pattern_name=pattern_name
                 )
+                boxes.append(box) 
     doc.close()
     return boxes
 
