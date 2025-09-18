@@ -11,7 +11,6 @@ router = APIRouter(tags=["redaction"])
 
 @router.get("/patterns")
 def list_patterns():
-    # 서버가 사용하는 기본 패턴을 외부로 노출 → 자동화 스크립트에서 재사용 가능
     return {"patterns": PRESET_PATTERNS}
 
 @router.post("/redactions/detect", response_model=DetectResponse)

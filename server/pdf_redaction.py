@@ -1,8 +1,7 @@
 # server/redaction.py
-import io
 import re
 from typing import List, Tuple, Dict
-import fitz  # PyMuPDF
+import io, fitz 
 
 from .schemas import Box, PatternItem
 from .validators import is_valid_rrn_date_only 
@@ -85,53 +84,44 @@ def detect_boxes_from_patterns(pdf_bytes: bytes, patterns: List[PatternItem]) ->
         for comp, pname in compiled:
             rects = _find_pattern_rects_on_page(page, comp, pname)
             for r, matched, pattern_name in rects:
-                # 주민번호는 날짜 유효성으로 오탐 낮춤 (선택)
-                if pattern_name == "rrn":
-                    try:
-                        if not is_valid_rrn_date_only(matched):
-                            continue
-                    except Exception:
-                        pass
-                boxes.append(
-                    Box(
-                        page=pno,
-                        x0=float(r.x0),
-                        y0=float(r.y0),
-                        x1=float(r.x1),
-                        y1=float(r.y1),
-                        matched_text=matched,
-                        pattern_name=pattern_name,
-                    )
+                box = Box(
+                    page=pno, 
+                    x0=float(r.x0), y0=float(r.y0),
+                    x1=float(r.x1), y1=float(r.y1),
+                    matched_text=matched, pattern_name=pattern_name
                 )
     doc.close()
     return boxes
 
-def apply_redaction(pdf_bytes: bytes, boxes: List[Box], fill: str = "black") -> bytes:
-    """
-    검출된 Box 좌표에 레닥션 적용 후 PDF 바이너리 반환.
-    - PyMuPDF에서는 '페이지' 단위로 apply_redactions() 호출해야 함.
-    """
+def apply_redaction(pdf_bytes: bytes, boxes: list[Box], fill: str = "black") -> bytes:
     doc = fitz.open(stream=pdf_bytes, filetype="pdf")
+    color = (0,0,0) if fill == "black" else (1,1,1)
 
-    # 페이지별로 박스 묶기
-    by_page: Dict[int, List[Box]] = {}
+    # 페이지별 그룹
+    by_page: dict[int, list[Box]] = {}
     for b in boxes:
         by_page.setdefault(b.page, []).append(b)
 
-    # 각 페이지 처리: 주석 추가 → 페이지에서 레닥션 적용
-    for pno, blist in by_page.items():
+    for pno, page_boxes in by_page.items():
         page = doc.load_page(pno)
-        for b in blist:
-            rect = fitz.Rect(b.x0, b.y0, b.x1, b.y1)
-            page.add_redact_annot(
-                rect,
-                fill=(0, 0, 0) if fill == "black" else (1, 1, 1),
-            )
-        # 중요: 문서(doc)가 아니라 '페이지(page)'에서 적용
-        page.apply_redactions()
+        pw, ph = page.rect.width, page.rect.height
+
+        for b in page_boxes:
+            x0 = max(0.0, min(float(b.x0), pw))
+            y0 = max(0.0, min(float(b.y0), ph))
+            x1 = max(0.0, min(float(b.x1), pw))
+            y1 = max(0.0, min(float(b.y1), ph))
+            if x0 > x1: x0, x1 = x1, x0
+            if y0 > y1: y0, y1 = y1, y0
+            if (x1 - x0) < 0.5 or (y1 - y0) < 0.5:
+                continue  # 너무 작은 박스는 무시(적용 안 되는 케이스 방지)
+
+            rect = fitz.Rect(x0, y0, x1, y1) 
+            page.add_redact_annot(rect, fill=color)
+
+        page.apply_redactions()  # 페이지별로 적용
 
     out = io.BytesIO()
-    # 저장 최적화 옵션은 선택사항
-    doc.save(out, deflate=True, garbage=4)
+    doc.save(out)
     doc.close()
     return out.getvalue()

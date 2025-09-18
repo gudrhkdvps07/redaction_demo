@@ -55,7 +55,7 @@ async def list_rules():
 
 @router.post("/extract")
 async def extract(file: UploadFile = File(...)):
-    """PDF/TXT에서 텍스트 추출"""
+    #PDF/TXT에서 텍스트 추출
     try:
         return await extract_text_from_file(file)
     except Exception as e:
