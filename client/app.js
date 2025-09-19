@@ -27,21 +27,21 @@ $('#file')?.addEventListener('change', async (e) => {
     if (saveBtn) { saveBtn.classList.add('hidden'); saveBtn.setAttribute('disabled', 'disabled'); }
 });
 
-// 스캔 실행: (1)추출 → (2)탐지/렌더 → (3)좌표탐지 → (4)레닥션 적용(+저장 버튼 활성화)
+// 스캔 실행: 추출 → 탐지/렌더 → 좌표탐지 → 레닥션 적용
 $('#btn-scan')?.addEventListener('click', async () => {
     const f = $('#file').files[0];
     if (!f) { alert('파일을 선택하세요'); return; }
     $('#status').textContent = '처리 중...';
 
     try {
-    // (1) 업로드 → 텍스트 추출
+    // 업로드 → 텍스트 추출
     const fd = new FormData();
     fd.append('file', f);
     const extResp = await fetch(`${API_BASE()}/extract`, { method: 'POST', body: fd });
     if (!extResp.ok) throw new Error(`extract ${extResp.status}`);
     const ext = await extResp.json();
 
-    // (2) 선택 규칙만 서버에 전달 (정규화는 서버 측 코드가 수행)
+    // 선택 규칙만 서버에 전달 (정규화는 서버 측 코드가 수행)
     const rules = $$('input[name="rule"]:checked').map(x => x.value);
     const body = { text: ext.full_text, rules };
     const matchResp = await fetch(`${API_BASE()}/match`, {
@@ -68,7 +68,7 @@ $('#btn-scan')?.addEventListener('click', async () => {
     }
     $('#summary').textContent = '검출: ' + Object.entries(res.counts).map(([k, v]) => `${k}=${v}`).join(', ');
 
-    // (3) PDF일 때만 좌표 탐지
+    //  PDF일 때만 좌표 탐지
     let boxes = [];
     if (f.type === 'application/pdf') {
         const fd2 = new FormData();
@@ -79,7 +79,7 @@ $('#btn-scan')?.addEventListener('click', async () => {
         boxes = det.boxes || [];
     }
 
-    // (4) PDF이고 박스가 있으면 레닥션 적용 → blob 저장 → 저장 버튼 활성화
+    // PDF이고 박스가 있으면 레닥션 적용 → blob 저장 → 저장 버튼 활성화
     __lastRedactedBlob = null;
     const saveBtn = $('#btn-save-redacted');
 

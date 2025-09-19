@@ -27,9 +27,8 @@
     <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
       <div class="bg-white rounded-2xl shadow p-5 space-y-4">
         <div>
-          <label class="block text-sm font-semibold mb-1">파일 업로드 (PDF 권장)</label>
-          <input id="file" type="file" accept=".pdf,.txt,text/plain" class="block w-full border rounded p-2 bg-white" />
-          <p class="text-xs text-gray-500 mt-1">* PDF는 서버에서 추출(PyMuPDF), TXT는 그대로 읽음</p>
+          <label class="block text-sm font-semibold mb-1">파일 업로드 (PDF 파일만 지원)</label>
+          <input id="file" type="file" accept=".pdf" class="block w-full border rounded p-2 bg-white" />
         </div>
 
         <fieldset class="border rounded p-3">
@@ -39,7 +38,6 @@
           <label class="block"><input type="checkbox" name="rule" value="phone_city" checked> 지역전화(02/031~064)</label>
           <label class="block"><input type="checkbox" name="rule" value="email" checked> 이메일</label>
           <label class="block"><input type="checkbox" name="rule" value="card" checked> 카드번호</label>
-          <label class="block"><input type="checkbox" name="rule" value="bizno" checked> 사업자등록번호</label>
         </fieldset>
 
 

@@ -45,7 +45,7 @@ def _mask_ranges_same_length(s: str, spans, mask_char: str = "R") -> str:
     return "".join(arr)
 
 # 기본적으로 모두 가리는걸로 설정
-DEFAULT_ORDER = ["rrn", "email", "phone_mobile", "phone_city", "bizno", "card"]
+DEFAULT_ORDER = ["rrn", "email", "phone_mobile", "phone_city", "card"]
 
 # ---------- API ----------
 @router.get("/rules")
@@ -55,7 +55,8 @@ async def list_rules():
 
 @router.post("/extract")
 async def extract(file: UploadFile = File(...)):
-    #PDF/TXT에서 텍스트 추출
+    if file.content_type not in ("application/pdf", "application/octet-stream"):
+        raise HTTPException(status_code=400, detail="PDF 파일만 업로드 가능합니다.")
     try:
         return await extract_text_from_file(file)
     except Exception as e:

@@ -77,14 +77,3 @@ def is_valid_phone_city(number: str, options: dict | None = None) -> bool:
 def is_valid_email(addr: str, options: dict | None = None) -> bool:
     pat = re.compile(r"^[A-Za-z0-9._%+-]+@(?:[A-Za-z0-9-]+\.)+[A-Za-z]{2,}$")
     return bool(pat.match(addr or ""))
-
-# --- 사업자번호 ---
-def is_valid_bizno(bno: str, options: dict | None = None) -> bool:
-    d = _digits(bno)
-    if len(d) != 10:
-        return False
-    w = [1,3,7,1,3,7,1,3,5]
-    s = sum(int(x)*ww for x, ww in zip(d[:-1], w))
-    s += (int(d[8]) * 5) // 10
-    chk = (10 - (s % 10)) % 10
-    return chk == int(d[-1])
