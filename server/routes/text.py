@@ -45,7 +45,7 @@ def _mask_ranges_same_length(s: str, spans, mask_char: str = "R") -> str:
     return "".join(arr)
 
 # 기본적으로 모두 가리는걸로 설정
-DEFAULT_ORDER = ["rrn", "email", "phone_mobile", "phone_city", "bizno", "card"]
+DEFAULT_ORDER = ["rrn", "email", "phone_mobile", "phone_city", "bizno", "card", "passport", "driver_license"]
 
 # ---------- API ----------
 @router.get("/rules")
