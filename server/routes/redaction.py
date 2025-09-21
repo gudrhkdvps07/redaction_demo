@@ -1,49 +1,296 @@
 # server/routes_redaction.py
-from fastapi import APIRouter, UploadFile, File, HTTPException, Response, Form
-from typing import List
-import json
+from __future__ import annotations
 
-from ..schemas import DetectRequest, DetectResponse, RedactRequest, PatternItem
+import json
+import logging
+import time
+from typing import List, Optional, Literal, Tuple, Set
+
+from fastapi import APIRouter, UploadFile, File, HTTPException, Response, Form
+
+from ..schemas import DetectResponse, PatternItem, Box
 from ..pdf_redaction import detect_boxes_from_patterns, apply_redaction
 from ..redac_rules import PRESET_PATTERNS
 
 router = APIRouter(tags=["redaction"])
+log = logging.getLogger("redaction.router")
 
+
+# ---------------------------
+# 유틸
+# ---------------------------
+def _ensure_pdf(file: UploadFile) -> None:
+    if file is None:
+        raise HTTPException(status_code=400, detail="PDF 파일을 업로드하세요.")
+    if file.content_type not in ("application/pdf", "application/octet-stream"):
+        raise HTTPException(status_code=400, detail="PDF 파일을 업로드하세요.")
+
+
+def _read_pdf(file: UploadFile) -> bytes:
+    data = file.file.read()
+    if not data:
+        raise HTTPException(status_code=400, detail="빈 파일입니다.")
+    return data
+
+
+def _default_patterns() -> List[PatternItem]:
+    return [PatternItem(**p) for p in PRESET_PATTERNS]
+
+
+def _parse_patterns_json(patterns_json: Optional[str]) -> List[PatternItem]:
+    if not patterns_json:
+        return _default_patterns()
+    try:
+        obj = json.loads(patterns_json)
+        if isinstance(obj, dict) and "patterns" in obj:
+            obj = obj["patterns"]
+        return [PatternItem(**p) for p in obj]
+    except Exception as e:
+        log.exception("patterns_json 파싱 실패: %s", e)
+        raise HTTPException(status_code=400, detail=f"잘못된 patterns_json: {e}")
+
+
+def _parse_boxes_json(boxes_json: Optional[str]) -> List[Box]:
+    if not boxes_json:
+        return []
+    try:
+        obj = json.loads(boxes_json)
+        if isinstance(obj, dict) and "boxes" in obj:
+            obj = obj["boxes"]
+        return [Box(**b) for b in obj]
+    except Exception as e:
+        log.exception("boxes_json 파싱 실패: %s", e)
+        raise HTTPException(status_code=400, detail=f"잘못된 boxes_json: {e}")
+
+
+def _boxes_from_req(req: Optional[str]) -> Tuple[List[Box], Optional[str]]:
+    """
+    기존 형식 req='{"boxes":[...], "fill":"black"}' 지원
+    반환: (boxes, fill_override)
+    """
+    if not req:
+        return [], None
+    try:
+        data = json.loads(req)
+    except Exception as e:
+        raise HTTPException(status_code=422, detail=f"invalid req json: {e}")
+
+    boxes: List[Box] = []
+    fill_override: Optional[str] = None
+
+    if isinstance(data, dict):
+        if "fill" in data and isinstance(data["fill"], str):
+            fill_override = data["fill"]
+        if "boxes" in data and isinstance(data["boxes"], list):
+            boxes = [Box(**b) for b in data["boxes"]]
+        elif isinstance(data.get("boxes"), dict) and "boxes" in data["boxes"]:
+            boxes = [Box(**b) for b in data["boxes"]["boxes"]]
+    elif isinstance(data, list):
+        boxes = [Box(**b) for b in data]
+
+    return boxes, fill_override
+
+
+def _split_csv_set(s: Optional[str]) -> Set[str]:
+    if not s:
+        return set()
+    return {x.strip() for x in s.split(",") if x.strip()}
+
+
+def _filter_boxes(
+    boxes: List[Box],
+    include_patterns: Set[str],
+    exclude_patterns: Set[str],
+) -> Tuple[List[Box], dict]:
+    """
+    include_patterns가 비어있지 않으면 allowlist 동작.
+    exclude_patterns는 항상 적용.
+    반환: (filtered_boxes, stats)
+    """
+    stats = {
+        "total": len(boxes),
+        "by_pattern_before": {},
+        "by_pattern_after": {},
+        "excluded_reasons": {},  # {pattern: count}
+        "include_mode": bool(include_patterns),
+        "exclude_set": sorted(list(exclude_patterns)),
+        "include_set": sorted(list(include_patterns)),
+    }
+
+    for p in set(b.pattern_name for b in boxes):
+        stats["by_pattern_before"][p] = sum(1 for b in boxes if b.pattern_name == p)
+
+    def _keep(b: Box) -> bool:
+        p = (b.pattern_name or "").strip()
+        if include_patterns and p not in include_patterns:
+            stats["excluded_reasons"][p] = stats["excluded_reasons"].get(p, 0) + 1
+            return False
+        if p in exclude_patterns:
+            stats["excluded_reasons"][p] = stats["excluded_reasons"].get(p, 0) + 1
+            return False
+        return True
+
+    out = [b for b in boxes if _keep(b)]
+
+    for p in set(b.pattern_name for b in out):
+        stats["by_pattern_after"][p] = sum(1 for b in out if b.pattern_name == p)
+
+    return out, stats
+
+
+def _dedup_boxes(boxes: List[Box], tol: float = 0.25) -> List[Box]:
+    """간단 좌표 중복 제거."""
+    out: List[Box] = []
+    def same(a: Box, b: Box) -> bool:
+        return (
+            a.page == b.page and
+            abs(a.x0 - b.x0) <= tol and
+            abs(a.y0 - b.y0) <= tol and
+            abs(a.x1 - b.x1) <= tol and
+            abs(a.y1 - b.y1) <= tol
+        )
+    for b in boxes:
+        if not any(same(b, x) for x in out):
+            out.append(b)
+    return out
+
+
+# ---------------------------
+# 엔드포인트
+# ---------------------------
 @router.get("/patterns")
 def list_patterns():
     return {"patterns": PRESET_PATTERNS}
 
-@router.post("/redactions/detect", response_model=DetectResponse)
-async def detect(file: UploadFile = File(...), req: DetectRequest = DetectRequest()):
-    # 파일 검증
-    if file.content_type not in ("application/pdf", "application/octet-stream"):
-        raise HTTPException(status_code=400, detail="PDF 파일을 업로드하세요.")
-    pdf = await file.read()
 
-    # 요청에 패턴이 없으면 서버 프리셋 기본 사용
-    patterns: List[PatternItem] = req.patterns or [PatternItem(**p) for p in PRESET_PATTERNS]
+@router.post("/redactions/detect", response_model=DetectResponse)
+async def detect(
+    file: UploadFile = File(..., description="PDF 파일"),
+    patterns_json: Optional[str] = Form(None, description="옵션: List[PatternItem] 또는 {'patterns':[...]} JSON"),
+):
+    """
+    PDF에서 패턴을 탐지하고 박스 좌표를 반환.
+    """
+    _ensure_pdf(file)
+    t0 = time.perf_counter()
+    pdf = await file.read()
+    patterns = _parse_patterns_json(patterns_json)
+
+    log.debug("DETECT request: size=%dB patterns=%s",
+              len(pdf), [p.name for p in patterns])
 
     boxes = detect_boxes_from_patterns(pdf, patterns)
+    elapsed = (time.perf_counter() - t0) * 1000
+    log.debug("DETECT done: total_matches=%d elapsed=%.2fms", len(boxes), elapsed)
     return DetectResponse(total_matches=len(boxes), boxes=boxes)
+
 
 @router.post("/redactions/apply", response_class=Response)
 async def apply(
-    file: UploadFile = File(...),
-    req: str = Form('{"boxes": [], "fill": "black"}')):
-    if file.content_type not in ("application/pdf", "application/octet-stream"):
-        raise HTTPException(status_code=400, detail="PDF 파일을 업로드하세요.")
-    try:
-        data = json.loads(req)
-        model = RedactRequest(**data)
-    except Exception as e:
-        raise HTTPException(status_code=422, detail=f"invalid req json: {e}")
-    if not model.boxes:
-        raise HTTPException(status_code=400, detail="boxes가 비어있습니다.")
-    pdf = await file.read()
+    file: UploadFile = File(..., description="PDF 파일"),
+    req: Optional[str] = Form(None, description='기존 형식: {"boxes":[...], "fill":"black|white"}'),
+    boxes_json: Optional[str] = Form(None, description="List[Box] 또는 {'boxes':[...]}"),
+    fill: Optional[str] = Form("black", description="'black' 또는 'white'"),
+    patterns_json: Optional[str] = Form(None, description="자동 감지 시 사용할 패턴 JSON(없으면 PRESET)"),
+    mode: Literal["strict", "auto_all", "auto_merge"] = Form(
+        "strict",
+        description=(
+            "strict: 받은 boxes만 적용 (기존 동작) | "
+            "auto_all: boxes 무시, 서버 감지 전체 적용 | "
+            "auto_merge: 받은 boxes + 서버 감지 결과 합쳐 적용"
+        ),
+    ),
+    # 정책 파라미터
+    exclude_patterns: Optional[str] = Form(
+        "rrn",
+        description="콤마구분. 기본값 'rrn' (주민번호는 탐지하되 미적용). 예: 'rrn,card'",
+    ),
+    include_patterns: Optional[str] = Form(
+        None,
+        description="콤마구분 allowlist. 지정되면 해당 패턴만 적용. 예: 'email,phone_mobile'",
+    ),
+    # ✅ 가장 중요: 카드번호는 반드시 포함시키기 위한 보증 패턴(기본 'card')
+    ensure_patterns: Optional[str] = Form(
+        "card",
+        description="서버가 추가 감지해 반드시 포함시킬 패턴(콤마구분). 기본: 'card'",
+    ),
+):
+    """
+    PDF에 레닥션을 적용한다.
+    - strict (기본): 프론트에서 보낸 boxes만 + ensure_patterns(예: card)는 서버가 추가 감지하여 병합
+    - auto_all: 프론트 입력 무시하고 서버 감지 전체 적용
+    - auto_merge: 프론트가 보낸 박스 + 서버 감지 결과를 합쳐 적용
+    - exclude/include/ensure 로 정책 제어 가능
+    """
+    _ensure_pdf(file)
+    pdf = _read_pdf(file)
+    t0 = time.perf_counter()
 
-    out = apply_redaction(pdf, model.boxes, fill=model.fill)
+    boxes_req, fill_override = _boxes_from_req(req)
+    if fill_override:
+        fill = fill_override or fill
+    if boxes_json is not None:
+        boxes_req = _parse_boxes_json(boxes_json)
+
+    patterns = _parse_patterns_json(patterns_json)
+    excl = _split_csv_set(exclude_patterns)
+    incl = _split_csv_set(include_patterns)
+    ensure = _split_csv_set(ensure_patterns) or set()
+
+    log.debug(
+        "APPLY request: mode=%s, file_size=%dB, boxes_req=%d, fill=%s, patterns=%s, "
+        "exclude=%s, include=%s, ensure=%s",
+        mode, len(pdf), len(boxes_req), fill,
+        [p.name for p in patterns], sorted(list(excl)), sorted(list(incl)), sorted(list(ensure))
+    )
+
+    # 1) 모드별 기본 박스 구성
+    if mode == "auto_all":
+        detected = detect_boxes_from_patterns(pdf, patterns)
+        base_boxes = detected
+
+    elif mode == "auto_merge":
+        detected = detect_boxes_from_patterns(pdf, patterns)
+        base_boxes = (boxes_req or []) + detected
+
+    else:  # strict
+        base_boxes = boxes_req or []
+        # ✅ strict인데도 ensure 패턴(기본: card)은 반드시 포함되도록 추가 감지하여 병합
+        if ensure:
+            ensure_detected = detect_boxes_from_patterns(pdf, patterns)
+            ensured = [b for b in ensure_detected if (b.pattern_name or "") in ensure]
+            log.debug(
+                "APPLY strict: ensure_patterns=%s detected=%d -> merge=%d",
+                sorted(list(ensure)), len(ensure_detected), len(ensured)
+            )
+            if ensured:
+                base_boxes = _dedup_boxes(base_boxes + ensured)
+
+        if not base_boxes:
+            raise HTTPException(status_code=400, detail="boxes가 비어있습니다. (mode=strict)")
+
+    # 2) 정책 필터링 (include/exclude)
+    final_boxes, stats = _filter_boxes(base_boxes, include_patterns=incl, exclude_patterns=excl)
+
+    log.debug(
+        "APPLY build: before_total=%d after_total=%d include_mode=%s include=%s exclude=%s "
+        "by_pattern_before=%s by_pattern_after=%s excluded_reasons=%s",
+        stats["total"],
+        len(final_boxes),
+        stats["include_mode"],
+        stats["include_set"],
+        stats["exclude_set"],
+        stats["by_pattern_before"],
+        stats["by_pattern_after"],
+        stats["excluded_reasons"],
+    )
+
+    out = apply_redaction(pdf, final_boxes, fill=fill or "black")
+    elapsed = (time.perf_counter() - t0) * 1000
+    log.debug("APPLY done: bytes_out=%d elapsed=%.2fms", len(out), elapsed)
+
     return Response(
         content=out,
         media_type="application/pdf",
-        headers={"Content-Disposition": 'attachment; filename="redacted.pdf"'}
+        headers={"Content-Disposition": 'attachment; filename=\"redacted.pdf\"'},
     )
