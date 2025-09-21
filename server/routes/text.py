@@ -44,13 +44,11 @@ def _mask_ranges_same_length(s: str, spans, mask_char: str = "R") -> str:
                 arr[i] = mask_char
     return "".join(arr)
 
-<<<<<<< HEAD
 # 기본 규칙 우선순위
 DEFAULT_ORDER = [
     "rrn", "email", "phone_mobile", "phone_city",
     "card", "passport", "driver_license"
 ]
-=======
 
 RULE_LABELS = {
     "rrn": "주민등록번호",
@@ -67,7 +65,6 @@ async def list_rules():
         {"id": rid, "label": RULE_LABELS.get(rid, rid)}
         for rid in RULES.keys()
     ]
->>>>>>> ff409ea6a237a49d3062257e01e66a982e6a3db5
 
 # ---------- API ----------
 @router.get("/text/rules")
