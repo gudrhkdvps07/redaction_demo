@@ -33,6 +33,8 @@ MOBILE_RE = re.compile(r"\b01[016789]-?\d{3,4}-?\d{4}\b")
 # 도시번호: 02, 031~064만 허용 (01x 배제)
 CITY_RE   = re.compile(r"\b(?:02|0(?:3[1-3]|4[1-4]|5[1-5]|6[1-4]))-?\d{3,4}-?\d{4}\b")
 BIZNO_RE  = re.compile(r"\b\d{3}-?\d{2}-?\d{5}\b")
+PASSPORT_RE = re.compile(r"\b[A-Z]{1,2}\d{7,8}\b")
+DRIVER_RE = re.compile(r"\b\d{2}-\d{2}-\d{6}\b")
 
 RULES = {
     "rrn": {
@@ -59,6 +61,14 @@ RULES = {
         "regex": CARD_RE,
         "validator": is_valid_card,
     },
+    "passport": {
+        "regex": PASSPORT_RE,
+        "validator": lambda v, _opts=None: True,  # 간단히 통과
+    },
+    "driver_license": {
+        "regex": DRIVER_RE,
+        "validator": lambda v, _opts=None: True,
+    },
 }
 
 PRESET_PATTERNS = [
@@ -68,4 +78,6 @@ PRESET_PATTERNS = [
     {"name": "phone_city",    "regex": CITY_RE.pattern,   "case_sensitive": False, "whole_word": False},
     {"name": "bizno",         "regex": BIZNO_RE.pattern,  "case_sensitive": False, "whole_word": False},
     {"name": "card",          "regex": CARD_RE.pattern,   "case_sensitive": False, "whole_word": False},
+    {"name": "passport",       "regex": PASSPORT_RE.pattern,   "case_sensitive": False, "whole_word": False},
+    {"name": "driver_license", "regex": DRIVER_RE.pattern,     "case_sensitive": False, "whole_word": False},
 ]
