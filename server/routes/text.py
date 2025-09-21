@@ -52,10 +52,22 @@ def _mask_ranges_same_length(s: str, spans, mask_char: str = "R") -> str:
                 arr[i] = mask_char
     return "".join(arr)
 
+
+RULE_LABELS = {
+    "rrn": "주민등록번호",
+    "email": "이메일",
+    "phone_mobile": "휴대전화(010)",
+    "phone_city": "지역전화(02/031~064)",
+    "card": "카드번호",
+}
+
 # API
 @router.get("/rules")
 async def list_rules():
-    return list(RULES.keys())
+    return [
+        {"id": rid, "label": RULE_LABELS.get(rid, rid)}
+        for rid in RULES.keys()
+    ]
 
 @router.post("/extract")
 async def extract(file: UploadFile = File(...)):

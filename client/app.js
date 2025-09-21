@@ -5,27 +5,28 @@ let __lastRedactedBlob = null;          // 레닥션된 PDF blob 저장용
 
 async function loadRules() {
     try {
-        const resp = await fetch(`${API_BASE}/text/rules`);
-        if(!resp.ok) throw new Error(`rules ${resp.status}`);
+        const resp = await fetch(`${API_BASE()}/text/rules`);
+        if (!resp.ok) throw new Error(`rules ${resp.status}`);
         const rules = await resp.json();
+
+        console.log("rules 응답: ", rules); // 디버깅용
 
         const container = $('#rules-container');
         container.innerHTML = '';
 
-        //서버에서 받은 규칙 목록대로 체크박스를 생성함.
-        rules.array.forEach(rule => {
+        // 서버에서 받은 규칙 목록대로 체크박스를 생성
+        rules.forEach(rule => {
             const label = document.createElement('label');
             label.className = "block";
-            label.innerHTML = `<input type="checkbox" name="rule" value=${rule} checked> ${rule}`;
-            container.appendChild(label);
-        });
-    }catch (err) {
+            label.innerHTML = `<input type="checkbox" name="rule" value="${rule.id}" checked> ${rule.label}`;
+    container.appendChild(label);
+    });
+    } catch (err) {
         console.error("규칙 불러오기 실패:", err);
         $('#rules-container').textContent = '규칙을 불러오지 못했습니다.';
     }
 }
-
-document.addEventListener('DOMContentLoaded', loadRules)
+document.addEventListener('DOMContentLoaded', loadRules);
 
 async function renderPdfPreview(file) {
     const canvas = $('#pdf-preview');
