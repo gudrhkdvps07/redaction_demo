@@ -2,9 +2,25 @@
 import re
 import io
 import fitz
+import logging
 from typing import List, Tuple, Optional
 from .schemas import Box, PatternItem
 from .redac_rules import RULES  # validator 사용
+
+# ==========================
+# 로깅 설정
+# ==========================
+logger = logging.getLogger("redaction")
+logger.setLevel(logging.DEBUG)
+if not logger.handlers:
+    ch = logging.StreamHandler()
+    ch.setLevel(logging.DEBUG)
+    formatter = logging.Formatter(
+        "[%(asctime)s] [%(levelname)s] %(name)s: %(message)s",
+        "%Y-%m-%d %H:%M:%S",
+    )
+    ch.setFormatter(formatter)
+    logger.addHandler(ch)
 
 
 # --------------------------
@@ -15,6 +31,7 @@ def _compile_pattern(p: PatternItem) -> re.Pattern:
     pattern = p.regex
     if p.whole_word:
         pattern = rf"\b(?:{pattern})\b"
+    logger.debug("Compiling pattern: %s -> %s", p.name, pattern)
     return re.compile(pattern, flags)
 
 
@@ -33,6 +50,10 @@ def _word_spans_to_rect(words: List[tuple], spans: List[Tuple[int, int]]) -> Lis
 
 
 def _search_exact_bbox(page: fitz.Page, text: str, hint_rect: Optional[fitz.Rect] = None) -> Optional[fitz.Rect]:
+    """
+    page.search_for(text)로 정확한 bbox를 찾는다.
+    hint_rect가 주어지면 같은 줄/근접(rect 교차가 큰 것)을 우선 선택.
+    """
     try:
         hits = page.search_for(text)  # List[Rect]
     except Exception:
@@ -41,7 +62,7 @@ def _search_exact_bbox(page: fitz.Page, text: str, hint_rect: Optional[fitz.Rect
         return None
     if hint_rect is None:
         return hits[0]
-
+    # hint와 가장 많이 겹치는 rect 고르기
     best, best_iou = None, -1.0
     for r in hits:
         inter = fitz.Rect(
@@ -62,6 +83,12 @@ def _search_exact_bbox(page: fitz.Page, text: str, hint_rect: Optional[fitz.Rect
 
 
 def _find_pattern_rects_on_page(page: fitz.Page, comp: re.Pattern, pattern_name: str):
+    """
+    페이지에서 패턴을 찾아 (rect, matched_text, pattern_name) 리스트를 반환.
+    특별 처리:
+      - card: 숫자/하이픈/공백 토큰 이어붙여 숫자만 추출 후 fullmatch
+      - email: page.search_for()로 정확한 서브스트링 bbox 사용 (라벨 보호)
+    """
     results = []
     words = page.get_text("words")
     if not words:
@@ -78,7 +105,7 @@ def _find_pattern_rects_on_page(page: fitz.Page, comp: re.Pattern, pattern_name:
         start_idx: Optional[int] = None
 
         for i, t in enumerate(tokens):
-            if re.fullmatch(r"[\d\- ]+", t):
+            if re.fullmatch(r"[\d\- ]+", t):  # 숫자/하이픈/공백
                 if start_idx is None:
                     start_idx = i
                 buf += t
@@ -90,33 +117,42 @@ def _find_pattern_rects_on_page(page: fitz.Page, comp: re.Pattern, pattern_name:
                         rects = _word_spans_to_rect(words, [(start_idx, spans[-1] + 1)])
                         for r in rects:
                             results.append((r, buf, pattern_name))
+                            logger.debug("[CARD MATCH] p=%d buf='%s' cand='%s' len=%d rect=%s",
+                                         page.number, buf, candidate, len(candidate), r)
                     buf = ""
                     spans = []
                     start_idx = None
 
+        # 마지막 버퍼
         if buf:
             candidate = re.sub(r"\D", "", buf)
             if comp.fullmatch(candidate):
                 rects = _word_spans_to_rect(words, [(start_idx, spans[-1] + 1)])
                 for r in rects:
                     results.append((r, buf, pattern_name))
+                    logger.debug("[CARD MATCH] p=%d buf='%s' cand='%s' len=%d rect=%s",
+                                 page.number, buf, candidate, len(candidate), r)
 
+        logger.debug("[RESULT] page=%d pattern=card found=%d", page.number, len(results))
         return results
 
     # -----------------------------
-    # 일반 규칙 처리 (이메일은 search_for 사용)
+    # 일반 규칙 처리 (이메일은 search_for로 정확 bbox)
     # -----------------------------
     joined = " ".join(tokens)
     acc = 0
     for m in comp.finditer(joined):
         matched = m.group(0)
+        logger.debug("[MATCH] page=%d pattern=%s matched='%s' span=%s",
+                     page.number, pattern_name, matched, (m.start(), m.end()))
         start_char, end_char = m.start(), m.end()
         start_idx = end_idx = None
 
+        # 매치를 덮는 token 범위 찾기
         acc = 0
         for i, t in enumerate(tokens):
             if i > 0:
-                acc += 1
+                acc += 1  # 공백
             token_start, token_end = acc, acc + len(t)
             if token_end > start_char and token_start < end_char:
                 if start_idx is None:
@@ -127,20 +163,25 @@ def _find_pattern_rects_on_page(page: fitz.Page, comp: re.Pattern, pattern_name:
             continue
 
         if pattern_name == "email":
+            # 힌트: 해당 토큰(혹은 토큰 구간) bbox
             hint_rects = _word_spans_to_rect(words, [(start_idx, end_idx)])
             hint = hint_rects[0] if hint_rects else None
             exact = _search_exact_bbox(page, matched, hint)
             if exact:
                 results.append((exact, matched, pattern_name))
+                logger.debug("[EMAIL BOX] exact='%s' rect=%s", matched, exact)
                 continue
+            # fallback: 토큰 bbox
             for r in hint_rects:
                 results.append((r, matched, pattern_name))
             continue
 
+        # 기본: 토큰 범위 bbox
         rects = _word_spans_to_rect(words, [(start_idx, end_idx)])
         for r in rects:
             results.append((r, matched, pattern_name))
 
+    logger.debug("[RESULT] page=%d pattern=%s found=%d", page.number, pattern_name, len(results))
     return results
 
 
@@ -148,6 +189,9 @@ def _find_pattern_rects_on_page(page: fitz.Page, comp: re.Pattern, pattern_name:
 # 공개 함수
 # --------------------------
 def detect_boxes_from_patterns(pdf_bytes: bytes, patterns: List[PatternItem]) -> List[Box]:
+    """
+    패턴 탐지 → (validator가 있으면) 유효성 검증 후 Box 생성.
+    """
     doc = fitz.open(stream=pdf_bytes, filetype="pdf")
     boxes: List[Box] = []
 
@@ -155,9 +199,12 @@ def detect_boxes_from_patterns(pdf_bytes: bytes, patterns: List[PatternItem]) ->
 
     for pno in range(len(doc)):
         page = doc.load_page(pno)
+        logger.debug("Scanning page %d...", pno)
+
         for comp, pname in compiled:
             rects = _find_pattern_rects_on_page(page, comp, pname)
 
+            # validator 적용
             validator = None
             rule = RULES.get(pname)
             if rule:
@@ -168,10 +215,12 @@ def detect_boxes_from_patterns(pdf_bytes: bytes, patterns: List[PatternItem]) ->
                 if callable(validator):
                     try:
                         is_ok = bool(validator(matched))
-                    except Exception:
+                    except Exception as e:
+                        logger.exception("[VALIDATOR ERROR] pattern=%s value='%s' err=%s", pname, matched, e)
                         is_ok = False
 
                 if not is_ok:
+                    logger.debug("[DROP] pattern=%s value='%s' (validator rejected)", pname, matched)
                     continue
 
                 boxes.append(
@@ -185,8 +234,10 @@ def detect_boxes_from_patterns(pdf_bytes: bytes, patterns: List[PatternItem]) ->
                         pattern_name=pname,
                     )
                 )
+                logger.debug("→ Box added: %s | text='%s'", pname, matched)
 
     doc.close()
+    logger.debug("Total boxes detected: %d", len(boxes))
     return boxes
 
 
@@ -197,10 +248,16 @@ def apply_redaction(pdf_bytes: bytes, boxes: List[Box], fill="black") -> bytes:
     for b in boxes:
         by_page.setdefault(b.page, []).append(b)
 
+    logger.debug("APPLY REQUEST: total_boxes=%d, patterns=%s, fill=%s",
+                 len(boxes), [b.pattern_name for b in boxes], fill)
+
     for pno, page_boxes in by_page.items():
         page = doc.load_page(pno)
+        logger.debug("Applying redactions on page %d (count=%d)", pno, len(page_boxes))
         for b in page_boxes:
             rect = fitz.Rect(b.x0, b.y0, b.x1, b.y1)
+            area = (b.x1 - b.x0) * (b.y1 - b.y0)
+            logger.debug("  → Redact box: %s | area=%.2f | text='%s'", rect, area, b.matched_text)
             page.add_redact_annot(rect, fill=color)
         page.apply_redactions()
 
