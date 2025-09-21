@@ -6,12 +6,13 @@
   <title>De-ID Text Inspector</title>
   <script src="https://cdn.tailwindcss.com"></script>
 
-  <!-- pdf.js는 "미리보기(1페이지)"만 사용 -->
+  <!-- pdf.js: PDF 미리보기 전용 -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
   <script>
     pdfjsLib.GlobalWorkerOptions.workerSrc =
       "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
 
+    // 백엔드 API 주소
     window.API_BASE = 'http://127.0.0.1:8000';
   </script>
 
@@ -33,9 +34,9 @@
 
         <fieldset class="border rounded p-3">
           <legend class="text-sm font-semibold">규칙 선택</legend>
+          <!-- 규칙 체크박스는 서버(/text/rules)에서 불러와서 app.js에서 동적으로 채움 -->
           <div id="rules-container" class="space-y-1"></div>
         </fieldset>
-
 
         <div class="flex items-center gap-3 mb-3">
           <button id="btn-scan" class="px-4 py-2 rounded bg-blue-600 text-white">스캔 실행</button>

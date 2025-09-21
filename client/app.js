@@ -3,30 +3,36 @@ const $$ = (s) => Array.from(document.querySelectorAll(s));
 const API_BASE = () => window.API_BASE; // index.html에서 세팅됨
 let __lastRedactedBlob = null;          // 레닥션된 PDF blob 저장용
 
+// ===============================
+// 규칙 목록 불러오기 → 체크박스 생성
+// ===============================
 async function loadRules() {
     try {
-        const resp = await fetch(`${API_BASE}/text/rules`);
+        const resp = await fetch(`${API_BASE()}/text/rules`);
         if(!resp.ok) throw new Error(`rules ${resp.status}`);
         const rules = await resp.json();
 
         const container = $('#rules-container');
         container.innerHTML = '';
 
-        //서버에서 받은 규칙 목록대로 체크박스를 생성함.
-        rules.array.forEach(rule => {
+        // 서버에서 받은 규칙 배열을 기반으로 체크박스 생성
+        rules.forEach(rule => {
             const label = document.createElement('label');
             label.className = "block";
-            label.innerHTML = `<input type="checkbox" name="rule" value=${rule} checked> ${rule}`;
+            label.innerHTML = `<input type="checkbox" name="rule" value="${rule}" checked> ${rule}`;
             container.appendChild(label);
         });
-    }catch (err) {
+    } catch (err) {
         console.error("규칙 불러오기 실패:", err);
         $('#rules-container').textContent = '규칙을 불러오지 못했습니다.';
     }
 }
 
-document.addEventListener('DOMContentLoaded', loadRules)
+document.addEventListener('DOMContentLoaded', loadRules);
 
+// ===============================
+// PDF 미리보기
+// ===============================
 async function renderPdfPreview(file) {
     const canvas = $('#pdf-preview');
     const g = canvas.getContext('2d');
@@ -43,7 +49,9 @@ async function renderPdfPreview(file) {
     await page.render({ canvasContext: g, viewport }).promise;
 }
 
-// 파일 변경 시 미리보기 + 저장 버튼 초기화
+// ===============================
+// 파일 변경 시 → 미리보기 & 버튼 초기화
+// ===============================
 $('#file')?.addEventListener('change', async (e) => {
     try { await renderPdfPreview(e.target.files[0]); } catch (_) {}
     __lastRedactedBlob = null;
@@ -54,21 +62,23 @@ $('#file')?.addEventListener('change', async (e) => {
     }
 });
 
-// 스캔 실행: 추출 → match → detect → valid box 필터링 → apply
+// ===============================
+// 스캔 실행 (추출 → match → detect → apply)
+// ===============================
 $('#btn-scan')?.addEventListener('click', async () => {
     const f = $('#file').files[0];
     if (!f) { alert('파일을 선택하세요'); return; }
     $('#status').textContent = '처리 중...';
 
     try {
-        // 1. 업로드 → 텍스트 추출
+        // 1. 텍스트 추출
         const fd = new FormData();
         fd.append('file', f);
         const extResp = await fetch(`${API_BASE()}/text/extract`, { method: 'POST', body: fd });
         if (!extResp.ok) throw new Error(`extract ${extResp.status}`);
         const ext = await extResp.json();
 
-        // 2. match (유효성 포함)
+        // 2. match
         const rules = $$('input[name="rule"]:checked').map(x => x.value);
         const body = { text: ext.full_text, rules, options: { rrn_checksum: true }, normalize: true };
         const matchResp = await fetch(`${API_BASE()}/text/match`, {
@@ -79,7 +89,7 @@ $('#btn-scan')?.addEventListener('click', async () => {
         if (!matchResp.ok) throw new Error(`match ${matchResp.status}`);
         const res = await matchResp.json();
 
-        // 화면 렌더
+        // 결과 렌더링
         $('#txt-out').value = ext.full_text;
         const tbody = $('#result-rows');
         tbody.innerHTML = '';
@@ -104,7 +114,7 @@ $('#btn-scan')?.addEventListener('click', async () => {
             if (!detResp.ok) throw new Error(`detect ${detResp.status}`);
             const det = await detResp.json();
 
-            // 3-1. match(valid=True) 기준으로 detect 결과 필터링
+            // match(valid=True) 기준으로 detect 결과 필터링
             const validValues = new Set(res.items.filter(i => i.valid).map(i => i.value));
             boxes = (det.boxes || []).filter(b => validValues.has(b.matched_text));
         }
@@ -144,7 +154,9 @@ $('#btn-scan')?.addEventListener('click', async () => {
     }
 });
 
+// ===============================
 // 레닥션 PDF 저장
+// ===============================
 $('#btn-save-redacted')?.addEventListener('click', () => {
     if (!__lastRedactedBlob) { alert('레닥션된 파일이 없습니다'); return; }
     const a = document.createElement('a');

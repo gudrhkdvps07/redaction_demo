@@ -7,14 +7,12 @@ from ..redac_rules import RULES
 from ..normalize import normalize_text
 from ..extract_text import extract_text_from_file
 
-router = APIRouter(prefix="/text", tags=["text"])
+router = APIRouter(tags=["text"])
 
-# 데이터 모델
+# ---------- 데이터 모델 ----------
 class MatchRequest(BaseModel):
     text: str
     rules: Optional[List[str]] = None
-    options: Optional[Dict[str, Any]] = None
-    normalize: bool = True
 
 class MatchItem(BaseModel):
     rule: str
@@ -28,102 +26,85 @@ class MatchResponse(BaseModel):
     counts: Dict[str, int]
     items: List[MatchItem]
 
-# 헬퍼
+# ---------- 헬퍼 ----------
 def _ctx(text: str, start: int, end: int, window: int = 25) -> str:
-    return (
-        text[max(0, start - window): start]
-        + "【" + text[start:end] + "】"
-        + text[end: end + window]
-    )
+    return text[max(0, start - window): start] + "【" + text[start:end] + "】" + text[end: end + window]
 
 def _overlaps(a, b) -> bool:
     return a[0] < b[1] and b[0] < a[1]
 
 def _mask_ranges_same_length(s: str, spans, mask_char: str = "R") -> str:
-    if not spans:
-        return s
+    if not spans: return s
     arr = list(s)
     L = len(arr)
     for st, ed in spans:
-        st = max(0, min(st, L))
-        ed = max(0, min(ed, L))
+        st = max(0, min(st, L)); ed = max(0, min(ed, L))
         for i in range(st, ed):
-            if arr[i].isdigit() or arr[i] in "- ":
+            if arr[i].isdigit() or arr[i] in "- /":
                 arr[i] = mask_char
     return "".join(arr)
 
-# API
-@router.get("/rules")
-async def list_rules():
-    return list(RULES.keys())
+# 기본 규칙 우선순위
+DEFAULT_ORDER = [
+    "rrn", "email", "phone_mobile", "phone_city",
+    "card", "passport", "driver_license"
+]
 
-@router.post("/extract")
+# ---------- API ----------
+@router.get("/text/rules")
+async def list_rules():
+    # 존재하는 RULES 중 DEFAULT_ORDER 순서대로 반환
+    return [r for r in DEFAULT_ORDER if r in RULES]
+
+@router.post("/text/extract")
 async def extract(file: UploadFile = File(...)):
     try:
         return await extract_text_from_file(file)
     except Exception as e:
         raise HTTPException(status_code=415, detail=str(e))
 
-@router.post("/match", response_model=MatchResponse)
+@router.post("/text/match", response_model=MatchResponse)
 async def match(req: MatchRequest):
-    original_text = normalize_text(req.text) if req.normalize else req.text
+    original_text = normalize_text(req.text)
     working_text = original_text
-    options = req.options or {}
 
-    default_order = ["rrn", "email", "phone_mobile", "phone_city", "bizno", "card"]
-    selected = req.rules if req.rules else list(RULES.keys())
-    ordered_rules = [r for r in default_order if r in selected]
+    selected = req.rules or list(RULES.keys())
+    selected = [r for r in selected if r in RULES]
+    ordered_rules = [r for r in DEFAULT_ORDER if r in selected]
 
     results: List[Dict[str, Any]] = []
 
-    # RRN 
+    # 주민번호 먼저 탐지 후 마스킹
     rrn_spans = []
     if "rrn" in ordered_rules:
         regex = RULES["rrn"]["regex"]
         validator = RULES["rrn"]["validator"]
-
         for m in regex.finditer(working_text):
-            value = m.group()
-            start, end = m.start(), m.end()
-            valid = validator(value, options)
-
+            value = m.group(); start, end = m.start(), m.end()
+            valid = validator(value)
             results.append({
-                "rule": "rrn",
-                "value": value,
-                "valid": valid,
-                "index": start,
-                "end": end,
-                "context": _ctx(original_text, start, end),
+                "rule": "rrn", "value": value, "valid": valid,
+                "index": start, "end": end, "context": _ctx(original_text, start, end)
             })
             rrn_spans.append((start, end))
-
         working_text = _mask_ranges_same_length(working_text, rrn_spans, "R")
 
-    # 나머지
+    # 나머지 규칙 탐지
     for rid in ordered_rules:
-        if rid == "rrn":
-            continue
-
+        if rid == "rrn": continue
         regex = RULES[rid]["regex"]
         validator = RULES[rid]["validator"]
-
         for m in regex.finditer(working_text):
-            value = m.group()
-            start, end = m.start(), m.end()
-
-            valid = validator(value, options)
+            value = m.group(); start, end = m.start(), m.end()
+            valid = validator(value)
             results.append({
-                "rule": rid,
-                "value": value,
-                "valid": valid,
-                "index": start,
-                "end": end,
-                "context": _ctx(original_text, start, end),
+                "rule": rid, "value": value, "valid": valid,
+                "index": start, "end": end, "context": _ctx(original_text, start, end)
             })
 
     # 카운트 집계
-    counts = {rid: 0 for rid in RULES}
+    counts = {rid: 0 for rid in ordered_rules}
     for r in results:
-        counts[r["rule"]] += 1
+        counts[r["rule"]] = counts.get(r["rule"], 0) + 1
 
     return {"counts": counts, "items": results}

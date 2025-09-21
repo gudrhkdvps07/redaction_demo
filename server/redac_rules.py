@@ -24,6 +24,12 @@ MOBILE_RE = re.compile(r"01[016789]-?\d{3,4}-?\d{4}")
 # --- 지역번호 전화 ---
 CITY_RE = re.compile(r"(?:02|0(?:3[1-3]|4[1-4]|5[1-5]|6[1-4]))-?\d{3,4}-?\d{4}")
 
+# --- 여권번호 ---
+PASSPORT_RE = re.compile(r"[A-Z]{1,2}\d{7,8}")
+
+# --- 운전면허번호 ---
+DRIVER_RE = re.compile(r"\d{2}-\d{2}-\d{6}")
+
 # --- 룰 정의 ---
 RULES = {
     "rrn": {
@@ -44,15 +50,25 @@ RULES = {
     },
     "card": {
         "regex": CARD_RE,
-        "validator": is_valid_card,  
+        "validator": is_valid_card,
+    },
+    "passport": {
+        "regex": PASSPORT_RE,
+        "validator": lambda v, _opts=None: True,
+    },
+    "driver_license": {
+        "regex": DRIVER_RE,
+        "validator": lambda v, _opts=None: True,
     },
 }
 
 # --- 사전 정의된 패턴 ---
 PRESET_PATTERNS = [
-    {"name": "rrn", "regex": RRN_RE.pattern, "case_sensitive": False, "whole_word": False},
-    {"name": "email", "regex": EMAIL_RE.pattern, "case_sensitive": False, "whole_word": False},
-    {"name": "phone_mobile", "regex": MOBILE_RE.pattern, "case_sensitive": False, "whole_word": False},
-    {"name": "phone_city", "regex": CITY_RE.pattern, "case_sensitive": False, "whole_word": False},
-    {"name": "card", "regex": CARD_RE.pattern, "case_sensitive": False, "whole_word": False},
+    {"name": "rrn",            "regex": RRN_RE.pattern,        "case_sensitive": False, "whole_word": False},
+    {"name": "email",          "regex": EMAIL_RE.pattern,      "case_sensitive": False, "whole_word": False},
+    {"name": "phone_mobile",   "regex": MOBILE_RE.pattern,     "case_sensitive": False, "whole_word": False},
+    {"name": "phone_city",     "regex": CITY_RE.pattern,       "case_sensitive": False, "whole_word": False},
+    {"name": "card",           "regex": CARD_RE.pattern,       "case_sensitive": False, "whole_word": False},
+    {"name": "passport",       "regex": PASSPORT_RE.pattern,   "case_sensitive": False, "whole_word": False},
+    {"name": "driver_license", "regex": DRIVER_RE.pattern,     "case_sensitive": False, "whole_word": False},
 ]
