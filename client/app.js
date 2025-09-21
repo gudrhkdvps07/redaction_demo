@@ -3,6 +3,30 @@ const $$ = (s) => Array.from(document.querySelectorAll(s));
 const API_BASE = () => window.API_BASE; // index.html에서 세팅됨
 let __lastRedactedBlob = null;          // 레닥션된 PDF blob 저장용
 
+async function loadRules() {
+    try {
+        const resp = await fetch(`${API_BASE}/text/rules`);
+        if(!resp.ok) throw new Error(`rules ${resp.status}`);
+        const rules = await resp.json();
+
+        const container = $('#rules-container');
+        container.innerHTML = '';
+
+        //서버에서 받은 규칙 목록대로 체크박스를 생성함.
+        rules.array.forEach(rule => {
+            const label = document.createElement('label');
+            label.className = "block";
+            label.innerHTML = `<input type="checkbox" name="rule" value=${rule} checked> ${rule}`;
+            container.appendChild(label);
+        });
+    }catch (err) {
+        console.error("규칙 불러오기 실패:", err);
+        $('#rules-container').textContent = '규칙을 불러오지 못했습니다.';
+    }
+}
+
+document.addEventListener('DOMContentLoaded', loadRules)
+
 async function renderPdfPreview(file) {
     const canvas = $('#pdf-preview');
     const g = canvas.getContext('2d');

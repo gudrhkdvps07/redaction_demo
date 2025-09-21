@@ -69,7 +69,7 @@ def _find_pattern_rects_on_page(page: fitz.Page, comp: re.Pattern, pattern_name:
                         for r in rects:
                             results.append((r, buf, pattern_name))
                             logger.debug("[CARD MATCH] page=%d matched='%s' rect=%s",
-                                         page.number, buf, r)
+                                        page.number, buf, r)
                     buf = ""
                     spans = []
         # 마지막 버퍼 처리
@@ -80,7 +80,7 @@ def _find_pattern_rects_on_page(page: fitz.Page, comp: re.Pattern, pattern_name:
                 for r in rects:
                     results.append((r, buf, pattern_name))
                     logger.debug("[CARD MATCH] page=%d matched='%s' rect=%s",
-                                 page.number, buf, r)
+                                page.number, buf, r)
         logger.debug("[RESULT] page=%d pattern=card found=%d", page.number, len(results))
         return results
 

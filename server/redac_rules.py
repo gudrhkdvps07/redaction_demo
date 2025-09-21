@@ -44,7 +44,7 @@ RULES = {
     },
     "card": {
         "regex": CARD_RE,
-        "validator": is_valid_card,  # 단순히 15~16자리면 통과
+        "validator": is_valid_card,  
     },
 }
 
