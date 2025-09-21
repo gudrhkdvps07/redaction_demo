@@ -40,24 +40,11 @@ def is_valid_rrn(rrn: str, use_checksum: bool = False) -> bool:
         return False
     return True
 
-# --- 카드 (Luhn) ---
+# --- 카드 (무조건 True 처리, 숫자만 추출) ---
 def is_valid_card(number: str, options: dict | None = None) -> bool:
     d = _digits(number)
-    if not (13 <= len(d) <= 19):
-        return False
-    # 간단 BIN 가드
-    if d[0] not in "3456":
-        return False
-    s = 0
-    rev = d[::-1]
-    for i, ch in enumerate(rev):
-        n = int(ch)
-        if i % 2 == 1:
-            n *= 2
-            if n > 9:
-                n -= 9
-        s += n
-    return s % 10 == 0
+    # 카드번호는 15~16자리면 무조건 허용 (AMEX 15자리, 일반 16자리)
+    return len(d) in (15, 16)
 
 # --- 전화 ---
 def is_valid_phone_mobile(number: str, options: dict | None = None) -> bool:
