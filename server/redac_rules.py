@@ -1,57 +1,117 @@
 import re
-from .validators import (
-    is_valid_rrn,
-    is_valid_phone_mobile,
-    is_valid_phone_city,
-    is_valid_email,
-    is_valid_card,
-)
+from datetime import datetime
 
-# --- 주민등록번호 ---
-RRN_RE = re.compile(r"\d{6}-\d{7}")
 
-# --- 카드번호 (숫자만 추출 후 fullmatch) ---
-CARD_RE = re.compile(r"\d{15,16}")
+def _digits(s: str) -> str:
+    return re.sub(r"\D", "", s or "")
 
-# --- 이메일 ---
-EMAIL_RE = re.compile(r"[A-Za-z0-9._%+-]+@(?:[A-Za-z0-9-]+\.)+[A-Za-z]{2,}")
 
-# --- 휴대폰 ---
-MOBILE_RE = re.compile(r"01[016789]-?\d{3,4}-?\d{4}")
+# 주민등록번호
+def is_valid_rrn_date_only(rrn: str) -> bool:
+    d = _digits(rrn)
+    if len(d) != 13:
+        return False
+    birth = d[:6]
+    gender = d[6]
+    try:
+        y = ("20" if gender in "34" else "19") + birth[:2]
+        dt = datetime.strptime(y + birth[2:], "%Y%m%d")
+        if dt > datetime.today():
+            return False
+    except ValueError:
+        return False
+    return True
 
-# --- 지역번호 ---
-CITY_RE = re.compile(r"(?:02|0(?:3[1-3]|4[1-4]|5[1-5]|6[1-4]))-?\d{3,4}-?\d{4}")
 
-# --- 룰 정의 ---
-RULES = {
-    "rrn": {
-        "regex": RRN_RE,
-        "validator": lambda v, _opts=None: is_valid_rrn(v, use_checksum=True),
-    },
-    "email": {
-        "regex": EMAIL_RE,
-        "validator": is_valid_email,
-    },
-    "phone_mobile": {
-        "regex": MOBILE_RE,
-        "validator": is_valid_phone_mobile,
-    },
-    "phone_city": {
-        "regex": CITY_RE,
-        "validator": is_valid_phone_city,
-    },
-    "card": {
-        "regex": CARD_RE,
-        # 카드: Luhn + IIN 엄격 체크 (원하면 options={"luhn":False}로 완화 가능)
-        "validator": lambda v, _opts=None: is_valid_card(v, options={"luhn": True, "iin": True}),
-    },
-}
+def is_valid_rrn_checksum(rrn: str) -> bool:
+    d = _digits(rrn)
+    if len(d) != 13:
+        return False
+    weights = [2, 3, 4, 5, 6, 7, 8, 9, 2, 3, 4, 5]
+    total = sum(int(x) * w for x, w in zip(d[:-1], weights))
+    chk = (11 - (total % 11)) % 10
+    return chk == int(d[-1])
 
-# --- 프리셋 (API로 노출)
-PRESET_PATTERNS = [
-    {"name": "rrn",          "regex": RRN_RE.pattern,    "case_sensitive": False, "whole_word": False},
-    {"name": "email",        "regex": EMAIL_RE.pattern,  "case_sensitive": False, "whole_word": False},
-    {"name": "phone_mobile", "regex": MOBILE_RE.pattern, "case_sensitive": False, "whole_word": False},
-    {"name": "phone_city",   "regex": CITY_RE.pattern,   "case_sensitive": False, "whole_word": False},
-    {"name": "card",         "regex": CARD_RE.pattern,   "case_sensitive": False, "whole_word": False},
-]
+
+def is_valid_rrn(rrn: str, use_checksum: bool = False) -> bool:
+    if not is_valid_rrn_date_only(rrn):
+        return False
+    if use_checksum and not is_valid_rrn_checksum(rrn):
+        return False
+    return True
+
+
+# 카드
+def _luhn_ok(d: str) -> bool:
+    s = 0
+    alt = False
+    for ch in reversed(d):
+        n = ord(ch) - 48
+        if alt:
+            n *= 2
+            if n > 9:
+                n -= 9
+        s += n
+        alt = not alt
+    return (s % 10) == 0
+
+
+def is_valid_card(number: str, options: dict | None = None) -> bool:
+    """
+    정책:
+      - 길이: 15 또는 16
+      - IIN(시작대역):
+          * 16자리: 4(Visa), 5(Master 51–55), 2(2221–2720 범위), 6(Discover 등), 9(추가 허용)
+          * 15자리: 34/37 (AMEX)
+      - Luhn 통과
+    옵션:
+      options = {"luhn": True (default), "iin": True (default)}
+    """
+    opts = {"luhn": True, "iin": True}
+    if options:
+        opts.update(options)
+
+    d = _digits(number)
+    if len(d) not in (15, 16):
+        return False
+
+    # IIN 필터
+    if opts["iin"]:
+        if len(d) == 16:
+            if d[0] not in "24569":  # ✅ 9 추가
+                return False
+            if d[0] == "2":
+                prefix4 = int(d[:4])
+                if not (2221 <= prefix4 <= 2720):
+                    return False
+        else:  # 15
+            if not (d.startswith("34") or d.startswith("37")):
+                return False
+
+    # Luhn
+    if opts["luhn"] and not _luhn_ok(d):
+        return False
+
+    return True
+
+
+# 휴대폰
+def is_valid_phone_mobile(number: str, options: dict | None = None) -> bool:
+    d = _digits(number)
+    return d.startswith("010") and len(d) == 11
+
+
+# 지역번호
+def is_valid_phone_city(number: str, options: dict | None = None) -> bool:
+    d = _digits(number)
+    if d.startswith("02") and 9 <= len(d) <= 10:
+        return True
+    if d[:2] in {f"0{x}" for x in range(31, 65)} and 10 <= len(d) <= 11:
+        return True
+    return False
+
+
+# 이메일
+def is_valid_email(addr: str, options: dict | None = None) -> bool:
+    pat = re.compile(r"^[A-Za-z0-9._%+-]+@(?:[A-Za-z0-9-]+\.)+[A-Za-z]{2,}$")
+    return bool(pat.match(addr or ""))
