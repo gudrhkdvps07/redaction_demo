@@ -4,7 +4,7 @@ from typing import List, Optional, Literal
 class PatternItem(BaseModel):
     name: str
     regex: str
-    case_sensitive: bool = False 
+    case_sensitive: bool = False
     whole_word: bool = False
 
 class DetectRequest(BaseModel):
