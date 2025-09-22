@@ -1,7 +1,6 @@
 from fastapi import APIRouter, UploadFile, File, HTTPException
 from pydantic import BaseModel
 from typing import List, Dict, Any, Optional
-import re
 
 from ..redac_rules import RULES
 from ..normalize import normalize_text
@@ -13,6 +12,8 @@ router = APIRouter(tags=["text"])
 class MatchRequest(BaseModel):
     text: str
     rules: Optional[List[str]] = None
+    options: Optional[Dict[str, Any]] = None  # 예: {"rrn_checksum": true, "luhn": true }
+    normalize: bool = True                    # 서버 측 정규화 사용 여부(기본 사용)
 
 class MatchItem(BaseModel):
     rule: str
@@ -26,45 +27,11 @@ class MatchResponse(BaseModel):
     counts: Dict[str, int]
     items: List[MatchItem]
 
-# ---------- 헬퍼 ----------
-def _ctx(text: str, start: int, end: int, window: int = 25) -> str:
-    return text[max(0, start - window): start] + "【" + text[start:end] + "】" + text[end: end + window]
-
-def _overlaps(a, b) -> bool:
-    return a[0] < b[1] and b[0] < a[1]
-
-def _mask_ranges_same_length(s: str, spans, mask_char: str = "R") -> str:
-    if not spans: return s
-    arr = list(s)
-    L = len(arr)
-    for st, ed in spans:
-        st = max(0, min(st, L)); ed = max(0, min(ed, L))
-        for i in range(st, ed):
-            if arr[i].isdigit() or arr[i] in "- /":
-                arr[i] = mask_char
-    return "".join(arr)
-
 # 기본 규칙 우선순위
 DEFAULT_ORDER = [
     "rrn", "email", "phone_mobile", "phone_city",
-    "card", "passport", "driver_license"
+    "bizno", "card", "passport", "driver_license"
 ]
-
-RULE_LABELS = {
-    "rrn": "주민등록번호",
-    "email": "이메일",
-    "phone_mobile": "휴대전화(010)",
-    "phone_city": "지역전화(02/031~064)",
-    "card": "카드번호",
-}
-
-# API
-@router.get("/rules")
-async def list_rules():
-    return [
-        {"id": rid, "label": RULE_LABELS.get(rid, rid)}
-        for rid in RULES.keys()
-    ]
 
 # ---------- API ----------
 @router.get("/text/rules")
@@ -79,9 +46,24 @@ async def extract(file: UploadFile = File(...)):
     except Exception as e:
         raise HTTPException(status_code=415, detail=str(e))
 
+def _ctx(text: str, start: int, end: int, window: int = 25) -> str:
+    return text[max(0, start - window): start] + "【" + text[start:end] + "】" + text[end: end + window]
+
+def _mask_ranges_same_length(s: str, spans, mask_char: str = "R") -> str:
+    if not spans: return s
+    arr = list(s)
+    L = len(arr)
+    for st, ed in spans:
+        st = max(0, min(st, L)); ed = max(0, min(ed, L))
+        for i in range(st, ed):
+            if arr[i].isdigit() or arr[i] in "- /":
+                arr[i] = mask_char
+    return "".join(arr)
+
 @router.post("/text/match", response_model=MatchResponse)
 async def match(req: MatchRequest):
-    original_text = normalize_text(req.text)
+    text_in = req.text or ""
+    original_text = normalize_text(text_in) if req.normalize else text_in
     working_text = original_text
 
     selected = req.rules or list(RULES.keys())
@@ -97,7 +79,11 @@ async def match(req: MatchRequest):
         validator = RULES["rrn"]["validator"]
         for m in regex.finditer(working_text):
             value = m.group(); start, end = m.start(), m.end()
-            valid = validator(value)
+            valid = False
+            try:
+                valid = bool(validator(value, req.options))
+            except Exception:
+                valid = False
             results.append({
                 "rule": "rrn", "value": value, "valid": valid,
                 "index": start, "end": end, "context": _ctx(original_text, start, end)
@@ -112,7 +98,11 @@ async def match(req: MatchRequest):
         validator = RULES[rid]["validator"]
         for m in regex.finditer(working_text):
             value = m.group(); start, end = m.start(), m.end()
-            valid = validator(value)
+            valid = False
+            try:
+                valid = bool(validator(value, req.options))
+            except Exception:
+                valid = False
             results.append({
                 "rule": rid, "value": value, "valid": valid,
                 "index": start, "end": end, "context": _ctx(original_text, start, end)

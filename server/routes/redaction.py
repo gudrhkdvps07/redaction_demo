@@ -25,17 +25,14 @@ def _ensure_pdf(file: UploadFile) -> None:
     if file.content_type not in ("application/pdf", "application/octet-stream"):
         raise HTTPException(status_code=400, detail="PDF 파일을 업로드하세요.")
 
-
 def _read_pdf(file: UploadFile) -> bytes:
     data = file.file.read()
     if not data:
         raise HTTPException(status_code=400, detail="빈 파일입니다.")
     return data
 
-
 def _default_patterns() -> List[PatternItem]:
     return [PatternItem(**p) for p in PRESET_PATTERNS]
-
 
 def _parse_patterns_json(patterns_json: Optional[str]) -> List[PatternItem]:
     if not patterns_json:
@@ -49,7 +46,6 @@ def _parse_patterns_json(patterns_json: Optional[str]) -> List[PatternItem]:
         log.exception("patterns_json 파싱 실패: %s", e)
         raise HTTPException(status_code=400, detail=f"잘못된 patterns_json: {e}")
 
-
 def _parse_boxes_json(boxes_json: Optional[str]) -> List[Box]:
     if not boxes_json:
         return []
@@ -62,7 +58,6 @@ def _parse_boxes_json(boxes_json: Optional[str]) -> List[Box]:
         log.exception("boxes_json 파싱 실패: %s", e)
         raise HTTPException(status_code=400, detail=f"잘못된 boxes_json: {e}")
 
-
 def _boxes_from_req(req: Optional[str]) -> Tuple[List[Box], Optional[str]]:
     """
     기존 형식 req='{"boxes":[...], "fill":"black"}' 지원
@@ -73,7 +68,7 @@ def _boxes_from_req(req: Optional[str]) -> Tuple[List[Box], Optional[str]]:
     try:
         data = json.loads(req)
     except Exception as e:
-        raise HTTPException(status_code=422, detail=f"invalid req json: {e}")
+        raise HTTPException(status_code=422, detail=f"잘못된 req JSON: {e}")
 
     boxes: List[Box] = []
     fill_override: Optional[str] = None
@@ -90,12 +85,10 @@ def _boxes_from_req(req: Optional[str]) -> Tuple[List[Box], Optional[str]]:
 
     return boxes, fill_override
 
-
 def _split_csv_set(s: Optional[str]) -> Set[str]:
     if not s:
         return set()
     return {x.strip() for x in s.split(",") if x.strip()}
-
 
 def _filter_boxes(
     boxes: List[Box],
@@ -137,7 +130,6 @@ def _filter_boxes(
 
     return out, stats
 
-
 def _dedup_boxes(boxes: List[Box], tol: float = 0.25) -> List[Box]:
     """간단 좌표 중복 제거."""
     out: List[Box] = []
@@ -154,7 +146,6 @@ def _dedup_boxes(boxes: List[Box], tol: float = 0.25) -> List[Box]:
             out.append(b)
     return out
 
-
 # ---------------------------
 # 엔드포인트
 # ---------------------------
@@ -162,15 +153,11 @@ def _dedup_boxes(boxes: List[Box], tol: float = 0.25) -> List[Box]:
 def list_patterns():
     return {"patterns": PRESET_PATTERNS}
 
-
 @router.post("/redactions/detect", response_model=DetectResponse)
 async def detect(
     file: UploadFile = File(..., description="PDF 파일"),
     patterns_json: Optional[str] = Form(None, description="옵션: List[PatternItem] 또는 {'patterns':[...]} JSON"),
 ):
-    """
-    PDF에서 패턴을 탐지하고 박스 좌표를 반환.
-    """
     _ensure_pdf(file)
     t0 = time.perf_counter()
     pdf = await file.read()
@@ -183,7 +170,6 @@ async def detect(
     elapsed = (time.perf_counter() - t0) * 1000
     log.debug("DETECT done: total_matches=%d elapsed=%.2fms", len(boxes), elapsed)
     return DetectResponse(total_matches=len(boxes), boxes=boxes)
-
 
 @router.post("/redactions/apply", response_class=Response)
 async def apply(
@@ -200,28 +186,19 @@ async def apply(
             "auto_merge: 받은 boxes + 서버 감지 결과 합쳐 적용"
         ),
     ),
-    # 정책 파라미터
     exclude_patterns: Optional[str] = Form(
-        "rrn",
-        description="콤마구분. 기본값 'rrn' (주민번호는 탐지하되 미적용). 예: 'rrn,card'",
+        None,
+        description="콤마구분. 지정된 패턴은 레닥션에서 제외. 예: 'card,passport'",
     ),
     include_patterns: Optional[str] = Form(
         None,
         description="콤마구분 allowlist. 지정되면 해당 패턴만 적용. 예: 'email,phone_mobile'",
     ),
-    # ✅ 가장 중요: 카드번호는 반드시 포함시키기 위한 보증 패턴(기본 'card')
     ensure_patterns: Optional[str] = Form(
         "card",
         description="서버가 추가 감지해 반드시 포함시킬 패턴(콤마구분). 기본: 'card'",
     ),
 ):
-    """
-    PDF에 레닥션을 적용한다.
-    - strict (기본): 프론트에서 보낸 boxes만 + ensure_patterns(예: card)는 서버가 추가 감지하여 병합
-    - auto_all: 프론트 입력 무시하고 서버 감지 전체 적용
-    - auto_merge: 프론트가 보낸 박스 + 서버 감지 결과를 합쳐 적용
-    - exclude/include/ensure 로 정책 제어 가능
-    """
     _ensure_pdf(file)
     pdf = _read_pdf(file)
     t0 = time.perf_counter()
@@ -244,18 +221,14 @@ async def apply(
         [p.name for p in patterns], sorted(list(excl)), sorted(list(incl)), sorted(list(ensure))
     )
 
-    # 1) 모드별 기본 박스 구성
     if mode == "auto_all":
         detected = detect_boxes_from_patterns(pdf, patterns)
         base_boxes = detected
-
     elif mode == "auto_merge":
         detected = detect_boxes_from_patterns(pdf, patterns)
         base_boxes = (boxes_req or []) + detected
-
     else:  # strict
         base_boxes = boxes_req or []
-        # ✅ strict인데도 ensure 패턴(기본: card)은 반드시 포함되도록 추가 감지하여 병합
         if ensure:
             ensure_detected = detect_boxes_from_patterns(pdf, patterns)
             ensured = [b for b in ensure_detected if (b.pattern_name or "") in ensure]
@@ -269,7 +242,6 @@ async def apply(
         if not base_boxes:
             raise HTTPException(status_code=400, detail="boxes가 비어있습니다. (mode=strict)")
 
-    # 2) 정책 필터링 (include/exclude)
     final_boxes, stats = _filter_boxes(base_boxes, include_patterns=incl, exclude_patterns=excl)
 
     log.debug(

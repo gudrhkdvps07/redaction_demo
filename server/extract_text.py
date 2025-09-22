@@ -14,12 +14,25 @@ def extract_pdf_text(data: bytes) -> dict:
 
 async def extract_text_from_file(file) -> dict:
     """
-    UploadFile 받아서 PDF만 처리
+    UploadFile 받아서 PDF 또는 TXT 처리
+    - PDF: PyMuPDF로 추출
+    - TXT: 그대로 읽어서 반환
     """
     data = await file.read()
     name = (getattr(file, "filename", "") or "").lower()
+    ctype = (getattr(file, "content_type", "") or "").lower()
 
-    if not name.endswith(".pdf"):
-        raise ValueError("PDF 파일만 지원합니다.")
+    is_pdf = ctype == "application/pdf" or name.endswith(".pdf")
+    is_txt = ctype.startswith("text/") or name.endswith(".txt")
 
-    return extract_pdf_text(data)
+    if is_pdf:
+        return extract_pdf_text(data)
+
+    if is_txt:
+        try:
+            text = data.decode("utf-8", errors="ignore")
+        except Exception:
+            text = data.decode("cp949", errors="ignore")
+        return {"full_text": text, "pages": [{"page": 1, "text": text}]}
+
+    raise ValueError("PDF 또는 TXT 파일만 지원합니다.")
