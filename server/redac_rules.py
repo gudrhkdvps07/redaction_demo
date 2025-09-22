@@ -5,7 +5,6 @@ from .validators import (
     is_valid_phone_city,
     is_valid_email,
     is_valid_card,
-    is_valid_bizno,
 )
 
 # --- 주민등록번호(간단 월/일 범위 반영, 하이픈 선택) ---
@@ -28,9 +27,6 @@ PASSPORT_RE = re.compile(r"[A-Z]{1,2}\d{7,8}")
 
 # --- 운전면허번호 ---
 DRIVER_RE = re.compile(r"\d{2}-\d{2}-\d{6}")
-
-# --- 사업자등록번호 ---
-BIZNO_RE = re.compile(r"\d{3}-?\d{2}-?\d{5}")
 
 # --- 룰 정의 ---
 RULES = {
@@ -64,10 +60,6 @@ RULES = {
         "regex": DRIVER_RE,
         "validator": lambda v, _opts=None: True,
     },
-    "bizno": {
-        "regex": BIZNO_RE,
-        "validator": is_valid_bizno,
-    },
 }
 
 # --- 프리셋 (API로 노출)
@@ -79,5 +71,4 @@ PRESET_PATTERNS = [
     {"name": "card",           "regex": CARD_RE.pattern,       "case_sensitive": False, "whole_word": False},
     {"name": "passport",       "regex": PASSPORT_RE.pattern,   "case_sensitive": False, "whole_word": False},
     {"name": "driver_license", "regex": DRIVER_RE.pattern,     "case_sensitive": False, "whole_word": False},
-    {"name": "bizno",          "regex": BIZNO_RE.pattern,      "case_sensitive": False, "whole_word": False},
 ]

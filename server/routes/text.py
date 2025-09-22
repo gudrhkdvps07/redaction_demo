@@ -30,7 +30,7 @@ class MatchResponse(BaseModel):
 # 기본 규칙 우선순위
 DEFAULT_ORDER = [
     "rrn", "email", "phone_mobile", "phone_city",
-    "bizno", "card", "passport", "driver_license"
+    "card", "passport", "driver_license"
 ]
 
 # ---------- API ----------

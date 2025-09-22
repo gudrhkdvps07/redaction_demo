@@ -106,20 +106,3 @@ def is_valid_email(addr: str, options: dict | None = None) -> bool:
     pat = re.compile(r"^[A-Za-z0-9._%+-]+@(?:[A-Za-z0-9-]+\.)+[A-Za-z]{2,}$")
     return bool(pat.match(addr or ""))
 
-# --- 사업자등록번호(10자리) ---
-def is_valid_bizno(number: str, options: dict | None = None) -> bool:
-    """
-    포맷: 10 digits (하이픈은 무시)
-    체크섬 규칙:
-      weights = [1,3,7,1,3,7,1,3,5]
-      s = sum(d[i]*weights[i] for i=0..8) + floor((d[8]*5)/10)
-      check = (10 - (s % 10)) % 10 == d[9]
-    """
-    d = _digits(number)
-    if len(d) != 10 or not d.isdigit():
-        return False
-    weights = [1,3,7,1,3,7,1,3,5]
-    s = sum(int(d[i]) * weights[i] for i in range(9))
-    s += (int(d[8]) * 5) // 10
-    check = (10 - (s % 10)) % 10
-    return check == int(d[9])
