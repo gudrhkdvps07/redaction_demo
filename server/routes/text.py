@@ -106,7 +106,7 @@ async def match(req: MatchRequest):
             results.append({
                 "rule": rid, "value": value, "valid": valid,
                 "index": start, "end": end, "context": _ctx(original_text, start, end)
-            })
+            }) 
 
     # 카운트 집계
     counts = {rid: 0 for rid in ordered_rules}

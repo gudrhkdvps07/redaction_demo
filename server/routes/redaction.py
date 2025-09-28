@@ -164,7 +164,7 @@ async def detect(
     patterns = _parse_patterns_json(patterns_json)
 
     log.debug("DETECT request: size=%dB patterns=%s",
-              len(pdf), [p.name for p in patterns])
+            len(pdf), [p.name for p in patterns])
 
     boxes = detect_boxes_from_patterns(pdf, patterns)
     elapsed = (time.perf_counter() - t0) * 1000

@@ -13,6 +13,7 @@ function normalizeByRule(rule, value) {
     case 'email':
       return lower(value)
     case 'rrn':
+    case 'fgn': 
     case 'card':
     case 'phone_mobile':
     case 'phone_city':
@@ -112,7 +113,6 @@ $('#btn-scan')?.addEventListener('click', async () => {
     const body = {
       text: ext.full_text,
       rules,
-      options: { rrn_checksum: true },
       normalize: true,
     }
     const matchResp = await fetch(`${API_BASE()}/text/match`, {
