@@ -29,7 +29,7 @@ class MatchResponse(BaseModel):
 
 # 기본 규칙 우선순위
 DEFAULT_ORDER = [
-    "rrn", "email", "phone_mobile", "phone_city",
+    "rrn", "fgn", "email", "phone_mobile", "phone_city",
     "card", "passport", "driver_license"
 ]
 

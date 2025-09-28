@@ -86,8 +86,8 @@ def _find_pattern_rects_on_page(page: fitz.Page, comp: re.Pattern, pattern_name:
     """
     페이지에서 패턴을 찾아 (rect, matched_text, pattern_name) 리스트를 반환.
     특별 처리:
-      - card: 숫자/하이픈/공백 토큰 이어붙여 숫자만 추출 후 fullmatch
-      - email: page.search_for()로 정확한 서브스트링 bbox 사용 (라벨 보호)
+        - card: 숫자/하이픈/공백 토큰 이어붙여 숫자만 추출 후 fullmatch
+        - email: page.search_for()로 정확한 서브스트링 bbox 사용 (라벨 보호)
     """
     results = []
     words = page.get_text("words")
