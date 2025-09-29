@@ -143,7 +143,7 @@ def is_valid_phone_city(number: str, options: dict | None = None) -> bool:
     d = _digits(number)
     if d.startswith("02") and 9 <= len(d) <= 10:
         return True
-    if d[:2] in {f"0{x}" for x in range(31, 65)} and 10 <= len(d) <= 11:
+    if d[:3] in {f"0{x}" for x in range(31 ,65)} and 10 <= len(d) <= 11:
         return True
     return False
 
