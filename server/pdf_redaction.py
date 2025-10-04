@@ -86,8 +86,8 @@ def _find_pattern_rects_on_page(page: fitz.Page, comp: re.Pattern, pattern_name:
     """
     페이지에서 패턴을 찾아 (rect, matched_text, pattern_name) 리스트를 반환.
     특별 처리:
-      - card: 숫자/하이픈/공백 토큰 이어붙여 숫자만 추출 후 fullmatch
-      - email: page.search_for()로 정확한 서브스트링 bbox 사용 (라벨 보호)
+        - card: 숫자/하이픈/공백 토큰 이어붙여 숫자만 추출 후 fullmatch
+        - email: page.search_for()로 정확한 서브스트링 bbox 사용 (라벨 보호)
     """
     results = []
     words = page.get_text("words")
@@ -118,7 +118,7 @@ def _find_pattern_rects_on_page(page: fitz.Page, comp: re.Pattern, pattern_name:
                         for r in rects:
                             results.append((r, buf, pattern_name))
                             logger.debug("[CARD MATCH] p=%d buf='%s' cand='%s' len=%d rect=%s",
-                                         page.number, buf, candidate, len(candidate), r)
+                                        page.number, buf, candidate, len(candidate), r)
                     buf = ""
                     spans = []
                     start_idx = None
@@ -131,7 +131,7 @@ def _find_pattern_rects_on_page(page: fitz.Page, comp: re.Pattern, pattern_name:
                 for r in rects:
                     results.append((r, buf, pattern_name))
                     logger.debug("[CARD MATCH] p=%d buf='%s' cand='%s' len=%d rect=%s",
-                                 page.number, buf, candidate, len(candidate), r)
+                                page.number, buf, candidate, len(candidate), r)
 
         logger.debug("[RESULT] page=%d pattern=card found=%d", page.number, len(results))
         return results
@@ -144,7 +144,7 @@ def _find_pattern_rects_on_page(page: fitz.Page, comp: re.Pattern, pattern_name:
     for m in comp.finditer(joined):
         matched = m.group(0)
         logger.debug("[MATCH] page=%d pattern=%s matched='%s' span=%s",
-                     page.number, pattern_name, matched, (m.start(), m.end()))
+                    page.number, pattern_name, matched, (m.start(), m.end()))
         start_char, end_char = m.start(), m.end()
         start_idx = end_idx = None
 
@@ -249,7 +249,7 @@ def apply_redaction(pdf_bytes: bytes, boxes: List[Box], fill="black") -> bytes:
         by_page.setdefault(b.page, []).append(b)
 
     logger.debug("APPLY REQUEST: total_boxes=%d, patterns=%s, fill=%s",
-                 len(boxes), [b.pattern_name for b in boxes], fill)
+                len(boxes), [b.pattern_name for b in boxes], fill)
 
     for pno, page_boxes in by_page.items():
         page = doc.load_page(pno)
