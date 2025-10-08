@@ -266,3 +266,27 @@ async def apply(
         media_type="application/pdf",
         headers={"Content-Disposition": 'attachment; filename=\"redacted.pdf\"'},
     )
+
+def match_text(text: str):
+    """
+    DOC, PPT, XLS 등 비PDF 문서에서 추출된 텍스트를
+    redac_rules의 PRESET_PATTERNS 기반으로 매칭
+    """
+    import re
+    matches = []
+    try:
+        for rule in PRESET_PATTERNS:
+            pattern = rule.get("pattern")
+            name = rule.get("name", "")
+            if not pattern:
+                continue
+            for m in re.finditer(pattern, text):
+                matches.append({
+                    "rule": name,
+                    "match": m.group(),
+                    "start": m.start(),
+                    "end": m.end()
+                })
+        return matches
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"매칭 오류: {e}")

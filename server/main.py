@@ -1,6 +1,6 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from .routes import text, redaction
+from .routes import text, redaction, redact_file
 
 app = FastAPI()
 
@@ -13,7 +13,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# 전역 헬스체크 (데모라서 main에 둠)
+# 전역 헬스체크
 @app.get("/health")
 async def health():
     return {"ok": True}
@@ -21,3 +21,4 @@ async def health():
 # 라우터 등록
 app.include_router(text.router)
 app.include_router(redaction.router)
+app.include_router(redact_file.router)  # ← /redact/file 404 방지

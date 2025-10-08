@@ -1,25 +1,29 @@
+import io
 import olefile, zlib, struct
 
 TAG_PARA_TEXT = 67
 
+
 def extract_text(file_bytes: bytes) -> dict:
-    with olefile.OleFileIO(file_bytes) as ole:
+    with olefile.OleFileIO(io.BytesIO(file_bytes)) as ole:
         raw = ole.openstream("BodyText/Section0").read()
+
     try:
         dec = zlib.decompress(raw, -15)
     except zlib.error:
         dec = raw
 
-    # 레코드 파싱 (텍스트만 모으기)
+    # 레코드 파싱 (텍스트만 수집)
     off, n = 0, len(dec)
     texts = []
     while off < n:
-        if off+4 > n: break
+        if off + 4 > n:
+            break
         header = struct.unpack_from("<I", dec, off)[0]
         tag = header & 0x3FF
         size = (header >> 20) & 0xFFF
         off += 4
-        payload = dec[off:off+size]
+        payload = dec[off:off + size]
         if tag == TAG_PARA_TEXT:
             txt = payload.decode("utf-16le", errors="ignore")
             texts.append(txt)
