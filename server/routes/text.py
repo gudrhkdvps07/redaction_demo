@@ -1,41 +1,75 @@
-from fastapi import UploadFile, HTTPException
-from ..doc_redactor import extract_text as extract_doc_text
-from ..ppt_redactor import extract_text as extract_ppt_text
-from ..xls_extractor import extract_text_from_xls
-from ..hwp_redactor import extract_text as extract_hwp_text
+from fastapi import APIRouter, UploadFile, File, HTTPException
+from pydantic import BaseModel
+from typing import List, Optional
+from ..extract_text import extract_text_from_file as _extract_text  # 서버 공용 추출기 사용
+from ..redac_rules import PRESET_PATTERNS, RULES
+from ..normalize import normalize_text
+import re
 
+router = APIRouter(prefix="/text", tags=["text"])
 
-async def extract_text_from_file(file: UploadFile):
+# 규칙 이름 목록 (프론트에서 체크박스 렌더링에 사용)
+@router.get("/rules")
+def list_rules():
+    return [p["name"] for p in PRESET_PATTERNS]
+
+# 파일 텍스트 추출 (프론트 /text/extract 호출)
+@router.post("/extract")
+async def extract(file: UploadFile = File(...)):
     try:
-        filename = (file.filename or "").lower()
-        content_type = (file.content_type or "").lower()
-
-        # 1️⃣ 기본 유효성 검사
-        if not filename:
-            raise HTTPException(status_code=415, detail="파일명이 비어 있습니다.")
-
-        file_bytes = await file.read()
-        if not file_bytes or len(file_bytes) < 8:
-            raise HTTPException(status_code=415, detail="빈 파일이거나 손상된 파일입니다.")
-
-        # 2️⃣ 확장자 및 MIME 타입 기반 분기 (x붙은 확장자 제외)
-        if (filename.endswith(".doc") and not filename.endswith(".docx")) or "msword" in content_type:
-            return extract_doc_text(file_bytes)
-
-        elif (filename.endswith(".ppt") and not filename.endswith(".pptx")) or "powerpoint" in content_type:
-            return extract_ppt_text(file_bytes)
-
-        elif (filename.endswith(".xls") and not filename.endswith(".xlsx")) or "excel" in content_type:
-            return extract_text_from_xls(file_bytes)
-
-        elif filename.endswith(".hwp") or "hwp" in content_type:
-            return extract_hwp_text(file_bytes)
-
-        else:
-            raise HTTPException(status_code=415, detail=f"지원하지 않는 파일 형식입니다. ({filename})")
-
+        return await _extract_text(file)
     except HTTPException:
         raise
     except Exception as e:
-        # 내부 오류는 500으로 분리해서 로그 확인 가능하게
-        raise HTTPException(status_code=500, detail=f"서버 내부 오류: {e}")
+        # 업로드/미지원 포맷/손상 파일 등은 415로 돌려 프론트 상태표시 유지
+        raise HTTPException(status_code=415, detail=f"텍스트 추출 실패: {e}")
+
+# 매칭 요청 스키마
+class MatchRequest(BaseModel):
+    text: str
+    rules: Optional[List[str]] = None
+    normalize: Optional[bool] = False
+
+# 텍스트 매칭 (프론트 /text/match 호출)
+@router.post("/match")
+def match(req: MatchRequest):
+    # 1) 전처리
+    text = req.text or ""
+    if req.normalize:
+        text = normalize_text(text)
+
+    # 2) 사용할 패턴 셀렉션
+    patterns = PRESET_PATTERNS
+    if req.rules:
+        want = set(req.rules)
+        patterns = [p for p in PRESET_PATTERNS if p["name"] in want]
+
+    items = []
+    counts = {}
+
+    for p in patterns:
+        name = p["name"]
+        comp = re.compile(p["regex"], re.IGNORECASE if not p.get("case_sensitive") else 0)
+        found = list(comp.finditer(text))
+        counts[name] = len(found)
+
+        validator = RULES.get(name, {}).get("validator")
+
+        for m in found:
+            ctx_start = max(0, m.start() - 20)
+            ctx_end   = min(len(text), m.end() + 20)
+            val_ok = True
+            if callable(validator):
+                try:
+                    val_ok = bool(validator(m.group()))
+                except Exception:
+                    val_ok = False
+
+            items.append({
+                "rule": name,
+                "value": m.group(),
+                "valid": val_ok,
+                "context": text[ctx_start:ctx_end],
+            })
+
+    return {"items": items, "counts": counts}
