@@ -268,25 +268,49 @@ async def apply(
     )
 
 def match_text(text: str):
-    """
-    DOC, PPT, XLS 등 비PDF 문서에서 추출된 텍스트를
-    redac_rules의 PRESET_PATTERNS 기반으로 매칭
-    """
     import re
-    matches = []
+    from ..redac_rules import PRESET_PATTERNS
+    import traceback
+
     try:
+        if not isinstance(text, str):
+            print("[match_text] text 타입:", type(text))
+            text = str(text)
+
+        matches = []
+        counts = {}
+
         for rule in PRESET_PATTERNS:
-            pattern = rule.get("pattern")
+            pattern = rule.get("regex")
             name = rule.get("name", "")
             if not pattern:
                 continue
-            for m in re.finditer(pattern, text):
+
+            try:
+                regex = re.compile(pattern, re.IGNORECASE)
+            except re.error as err:
+                print(f"정규식 컴파일 실패: {name} ({err})")
+                continue
+
+            found = list(regex.finditer(text))
+            counts[name] = len(found)
+
+            for m in found:
+                ctx_start = max(0, m.start() - 20)
+                ctx_end = min(len(text), m.end() + 20)
                 matches.append({
                     "rule": name,
-                    "match": m.group(),
+                    "value": m.group(),
                     "start": m.start(),
-                    "end": m.end()
+                    "end": m.end(),
+                    "context": text[ctx_start:ctx_end],
+                    "valid": True,
                 })
-        return matches
+
+        print(f"✅ 매칭 완료: 총 {len(matches)}개 발견")
+        return {"items": matches, "counts": counts}
+
     except Exception as e:
+        print("match_text 내부 오류:", e)
+        traceback.print_exc()
         raise HTTPException(status_code=500, detail=f"매칭 오류: {e}")

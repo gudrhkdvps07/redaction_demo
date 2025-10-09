@@ -1,38 +1,41 @@
-from fastapi import APIRouter, UploadFile, File, HTTPException
-from ..extract_text import extract_text_from_file
-from ..routes.redaction import match_text
-from ..redac_rules import RULES
+from fastapi import UploadFile, HTTPException
+from ..doc_redactor import extract_text as extract_doc_text
+from ..ppt_redactor import extract_text as extract_ppt_text
+from ..xls_extractor import extract_text_from_xls
+from ..hwp_redactor import extract_text as extract_hwp_text
 
-router = APIRouter(prefix="/text", tags=["Text"])
 
-
-@router.post("/extract")
-async def extract(file: UploadFile = File(...)):
+async def extract_text_from_file(file: UploadFile):
     try:
-        result = await extract_text_from_file(file)
-        if not result or "full_text" not in result:
-            raise HTTPException(status_code=422, detail="텍스트 추출 실패")
-        return result
-    except ValueError as e:
-        raise HTTPException(status_code=415, detail=str(e))
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"서버 오류: {e}")
+        filename = (file.filename or "").lower()
+        content_type = (file.content_type or "").lower()
 
+        # 1️⃣ 기본 유효성 검사
+        if not filename:
+            raise HTTPException(status_code=415, detail="파일명이 비어 있습니다.")
 
-@router.post("/match")
-async def match(payload: dict):
-    try:
-        text = payload.get("full_text", "")
-        if not text:
-            raise HTTPException(status_code=400, detail="텍스트 없음")
-        matches = match_text(text)
-        return {"matches": matches}
+        file_bytes = await file.read()
+        if not file_bytes or len(file_bytes) < 8:
+            raise HTTPException(status_code=415, detail="빈 파일이거나 손상된 파일입니다.")
+
+        # 2️⃣ 확장자 및 MIME 타입 기반 분기 (x붙은 확장자 제외)
+        if (filename.endswith(".doc") and not filename.endswith(".docx")) or "msword" in content_type:
+            return extract_doc_text(file_bytes)
+
+        elif (filename.endswith(".ppt") and not filename.endswith(".pptx")) or "powerpoint" in content_type:
+            return extract_ppt_text(file_bytes)
+
+        elif (filename.endswith(".xls") and not filename.endswith(".xlsx")) or "excel" in content_type:
+            return extract_text_from_xls(file_bytes)
+
+        elif filename.endswith(".hwp") or "hwp" in content_type:
+            return extract_hwp_text(file_bytes)
+
+        else:
+            raise HTTPException(status_code=415, detail=f"지원하지 않는 파일 형식입니다. ({filename})")
+
+    except HTTPException:
+        raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"매칭 오류: {e}")
-    
-@router.get("/rules")
-def get_rules():
-    """
-    프론트에서 체크박스 표시용 규칙 목록 조회
-    """
-    return {"rules": RULES}
+        # 내부 오류는 500으로 분리해서 로그 확인 가능하게
+        raise HTTPException(status_code=500, detail=f"서버 내부 오류: {e}")
