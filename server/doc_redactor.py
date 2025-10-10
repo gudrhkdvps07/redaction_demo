@@ -9,7 +9,7 @@ def _extract_plcpcd(clx: bytes) -> bytes:
     while i < len(clx):
         tag = clx[i]
         i += 1
-        if tag == 0x01:  # Prc (서식 정보) → cb + grpprl
+        if tag == 0x01:  # Prc (서식 정보)
             if i + 2 > len(clx):
                 break
             cb = struct.unpack_from("<H", clx, i)[0]
@@ -36,7 +36,7 @@ def _parse_plcpcd(plcpcd: bytes):
     pcd_off = 4 * (n + 1)
     pieces = []
     for k in range(n):
-        pcd_bytes = plcpcd[pcd_off + 8 * k : pcd_off + 8 * (k + 1)]
+        pcd_bytes = plcpcd[pcd_off + 8 * k:pcd_off + 8 * (k + 1)]
         fc_raw = struct.unpack_from("<I", pcd_bytes, 2)[0]
 
         fc = fc_raw & 0x3FFFFFFF
@@ -68,49 +68,45 @@ def _decode_piece(chunk: bytes, fCompressed: bool) -> str:
 
 
 def extract_text(file_bytes: bytes) -> dict:
+    """
+    MS Word(.doc)에서 텍스트 추출.
+    구조가 다르거나 손상된 파일은 415로 끊지 않고 빈 텍스트를 반환.
+    """
     try:
         with olefile.OleFileIO(io.BytesIO(file_bytes)) as ole:
             if not ole.exists("WordDocument"):
-                print(" WordDocument 스트림 없음")
-                raise ValueError("WordDocument 없음")
+                print("⚠️ WordDocument 스트림 없음 → 빈 텍스트 반환")
+                return {"full_text": "", "pages": [{"page": 1, "text": ""}]}
 
             word_data = ole.openstream("WordDocument").read()
-            print("WordDocument 크기:", len(word_data))
-
             fib_flags = struct.unpack_from("<H", word_data, 0x000A)[0]
-            print("FIB flags:", hex(fib_flags))
-
             fWhichTblStm = (fib_flags & 0x0200) != 0
             tbl_name = "1Table" if fWhichTblStm and ole.exists("1Table") else "0Table"
+
             if not ole.exists(tbl_name):
-                print("Table 스트림 없음:", tbl_name)
-                raise ValueError("Table 스트림 없음")
+                print("⚠️ Table 스트림 없음:", tbl_name)
+                return {"full_text": "", "pages": [{"page": 1, "text": ""}]}
 
             table_data = ole.openstream(tbl_name).read()
-            print(f"Table 스트림({tbl_name}) 크기:", len(table_data))
-
             fcClx = struct.unpack_from("<I", word_data, 0x01A2)[0]
             lcbClx = struct.unpack_from("<I", word_data, 0x01A6)[0]
-            print(f"fcClx={fcClx}, lcbClx={lcbClx}")
 
             if fcClx + lcbClx > len(table_data):
-                print("CLX 범위 초과")
-                raise ValueError("CLX 범위 초과")
+                print("⚠️ CLX 범위 초과 → 무시")
+                return {"full_text": "", "pages": [{"page": 1, "text": ""}]}
 
-            clx = table_data[fcClx:fcClx+lcbClx]
+            clx = table_data[fcClx:fcClx + lcbClx]
             plcpcd = _extract_plcpcd(clx)
             if not plcpcd:
-                print("PlcPcd 없음")
-                raise ValueError("PlcPcd 없음")
+                print("⚠️ PlcPcd 없음")
+                return {"full_text": "", "pages": [{"page": 1, "text": ""}]}
 
             pieces = _parse_plcpcd(plcpcd)
-            print("조각 수:", len(pieces))
-
             texts = []
             for p in pieces[:5]:
-                print("조각:", p)
                 start, end = p["fc"], p["fc"] + p["byte_count"]
-                if end > len(word_data): continue
+                if end > len(word_data):
+                    continue
                 chunk = word_data[start:end]
                 texts.append(_decode_piece(chunk, p["fCompressed"]))
 
@@ -118,5 +114,5 @@ def extract_text(file_bytes: bytes) -> dict:
             return {"full_text": full_text, "pages": [{"page": 1, "text": full_text}]}
 
     except Exception as e:
-        print(" 내부 예외:", repr(e))
-        raise ValueError(f".doc 텍스트 추출 실패: {e}")
+        print("⚠️ DOC 추출 중 예외:", e)
+        return {"full_text": "", "pages": [{"page": 1, "text": ""}]}
